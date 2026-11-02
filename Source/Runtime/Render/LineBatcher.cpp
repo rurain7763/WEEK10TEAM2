@@ -53,6 +53,12 @@ void FLineBatcher::BeginFrame()
 {
 	VertexBufferPtr = VertexBufferBase;
 	VertexCount = 0;
+	SetDepthTest(true);
+}
+
+void FLineBatcher::SetDepthTest(const bool bEnable)
+{
+	PipelineState.DepthStencilState = bEnable ? EDepthStencilState::Default : EDepthStencilState::Disabled;
 }
 
 void FLineBatcher::AddLine(const FVector& A, const FVector& B, const FVector4& Color)

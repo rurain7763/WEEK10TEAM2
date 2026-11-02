@@ -44,6 +44,7 @@
 
 #include "Component/ShapeComponent.h"
 #include "Component/DecalComponent.h"
+#include "Component/SkinnedMeshComponent.h"
 #include "Engine/GameViewportClient.h"
 #include "Editor/SkeletalMeshPreviewTab.h"
 
@@ -872,6 +873,21 @@ void UEditorEngine::RenderOverlayPass(const FViewport& Viewport, FEditorViewport
 	}
 
 	LineBatcher->OnRender(ViewProjection);
+
+	// 미리보기 월드는 본을 보는 곳이라 스켈레톤을 메시 위에 겹쳐 그린다. 메시 안쪽에 있으므로 깊이 검사를 끈다
+	if (bShowEditorOverlay && ViewWorld.GetWorldType() == EWorldType::EditorPreview)
+	{
+		LineBatcher->BeginFrame();
+		LineBatcher->SetDepthTest(false);
+		for (TObjectIterator<USkinnedMeshComponent> SkinnedMesh; SkinnedMesh; ++SkinnedMesh)
+		{
+			AActor* Owner = SkinnedMesh->GetOwner();
+			if (Owner && Owner->GetWorld() == &ViewWorld)
+				SkinnedMesh->DrawDebugSkeleton(LineBatcher.get());
+		}
+		LineBatcher->OnRender(ViewProjection);
+		LineBatcher->SetDepthTest(true);
+	}
 
 	// Grid는 후처리(안개·FXAA)가 끝난 뒤 합성하는 에디터 표시라 안개를 적용하지 않는다.
 	// 원근은 픽셀 셰이더 Grid, 직교는 선 Grid를 쓴다 (언리얼 에디터와 같은 구분).
