@@ -3,6 +3,7 @@
 #include "GameFramework/Actor/ParticleActor.h"
 #include "GameFramework/Actor/StaticMeshActor.h"
 #include "GameFramework/Actor/TextRenderActor.h"
+#include "GameFramework/Actor/DecalActor.h"
 #include "GameFramework/Actor/ExponentialHeightFogActor.h"
 #include "GameFramework/Actor/AmbientLightActor.h"
 #include "GameFramework/Actor/DirectionalLightActor.h"
@@ -35,6 +36,7 @@ inline constexpr FSpawnableActorType SpawnableActorTypes[] =
 	{ "LevelSequence",        &ALevelSequenceActor::StaticClass },
 	{ "Particle",             &AParticleActor::StaticClass },
 	{ "Text",                 &ATextRenderActor::StaticClass },
+	{ "Decal",                &ADecalActor::StaticClass },
 	{ "ExponentialHeightFog", &AExponentialHeightFogActor::StaticClass },
 	{ "AmbientLight",         &AAmbientLightActor::StaticClass },
 	{ "DirectionalLight",     &ADirectionalLightActor::StaticClass },

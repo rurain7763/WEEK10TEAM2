@@ -29,6 +29,7 @@
 #include "Editor/HitoriEd/EditorResourcePaths.h"
 #include "UObject/UObjectIterator.h"
 #include "Component/SpotLightComponent.h"
+#include "Component/DecalComponent.h"
 #include "Core/ResourcePaths.h"
 
 #include "Core/EngineLog.h"
@@ -726,6 +727,16 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 				continue;
 			if (Selection.IsSelected(Owner) || LocalLight->ShouldAlwaysDrawDebug())
 				LocalLight->DrawDebug(LineBatcher.get());
+		}
+		for (TObjectIterator<UDecalComponent> Decal{}; Decal; ++Decal) {
+			AActor* Owner{ Decal->GetOwner() };
+			if (!Owner || Owner->GetWorld() != &ViewWorld || !Decal->IsActive()) {
+				continue;
+			}
+
+			if (Selection.IsSelected(Owner) || Decal->ShouldAlwaysDrawDebug()) {
+				Decal->DrawDebug(LineBatcher.get());
+			}
 		}
 	}
 

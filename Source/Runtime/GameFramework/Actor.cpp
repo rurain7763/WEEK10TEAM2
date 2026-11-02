@@ -12,6 +12,7 @@
 #include "UObject/Object.h"
 #include "Component/ScriptComponent.h"
 #include "Component/PrimitiveComponent.h"
+#include "Component/DecalComponent.h"
 #include "Component/MovementComponent.h"
 #include "Camera/CameraTypes.h"
 
@@ -626,11 +627,15 @@ bool AActor::TryGetActorBounds(FBox& OutBounds) const
 
 	for (UActorComponent* Component : Components)
 	{
-		UPrimitiveComponent* Primitive = Cast<UPrimitiveComponent>(Component);
-		if (!Primitive)
+		USceneComponent* BoundedComponent{ Cast<UPrimitiveComponent>(Component) };
+		if (!BoundedComponent) {
+			BoundedComponent = Cast<UDecalComponent>(Component);
+		}
+		if (!BoundedComponent) {
 			continue;
+		}
 
-		FBox PrimitiveBounds = Primitive->CalcBounds();
+		const FBox PrimitiveBounds{ BoundedComponent->CalcBounds() };
 		if (bHasBounds)
 		{
 			OutBounds.Expand(PrimitiveBounds);

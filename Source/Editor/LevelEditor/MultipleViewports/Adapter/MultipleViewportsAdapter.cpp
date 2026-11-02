@@ -3,6 +3,7 @@
 #include "Editor/LevelEditor/MultipleViewports/Adapter/MultipleViewportsAdapter.h"
 
 #include "Component/PrimitiveComponent.h"
+#include "Component/DecalComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/BillboardComponent.h"
 #include "Component/ParticleSubUVComponent.h"
@@ -811,6 +812,28 @@ FPickHit FMultipleViewportsAdapter::PickActiveView(const FVector2 LocalMousePosi
         LastPick.Distance = Hit.Distance;
         LastPick.HitPoint = Hit.ImpactPoint;
     }
+    for (TObjectIterator<UDecalComponent> Decal{}; Decal; ++Decal) {
+        AActor* Owner{ Decal->GetOwner() };
+        if (!Owner || Owner->GetWorld() != &World || !Decal->IsActive()) {
+            continue;
+        }
+
+        const FVector Scale{ Decal->GetWorldScale3D() };
+        if (std::abs(Scale.X) < SMALL_NUMBER || std::abs(Scale.Y) < SMALL_NUMBER || std::abs(Scale.Z) < SMALL_NUMBER) {
+            continue;
+        }
+
+        const FRay LocalRay{ ToLocalRay(Ray, Decal->GetWorldMatrix()) };
+        const FBox Bounds{ Decal->CalcLocalBounds() };
+        float Distance{};
+        if (RayIntersectsAABB(LocalRay, Bounds.Min, Bounds.Max, Distance) && (!LastPick.bHit || Distance < LastPick.Distance)) {
+            LastPick.bHit = true;
+            LastPick.Id = Decal->GetUUID();
+            LastPick.Distance = Distance;
+            LastPick.HitPoint = Ray.PointAt(Distance);
+        }
+    }
+
     return LastPick;
 }
 
@@ -820,7 +843,7 @@ AActor* FMultipleViewportsAdapter::FindLastPickedActor() const
     if (!LastPick.bHit)
         return nullptr;
 
-    for (TObjectIterator<UPrimitiveComponent> It; It; ++It)
+    for (TObjectIterator<USceneComponent> It; It; ++It)
     {
         if (It->GetUUID() == LastPick.Id)
             return It->GetOwner();

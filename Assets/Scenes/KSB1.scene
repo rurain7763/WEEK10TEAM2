@@ -1,0 +1,228 @@
+{
+    "Version": 4,
+    "World": {
+        "PersistentLevel": {
+            "Actors": [
+                {
+                    "Class": "ASkeletalMeshActor",
+                    "Components": [
+                        {
+                            "Class": "USceneComponent",
+                            "Name": "DefaultSceneRoot",
+                            "Parent": "",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": -3.7789807319641113,
+                                        "Y": 0.7323286533355713,
+                                        "Z": 1.850250244140625
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "USkeletalMeshComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BaseColor": {
+                                            "A": 1.0,
+                                            "B": 0.5879999995231628,
+                                            "G": 0.5879999995231628,
+                                            "R": 0.5879999995231628
+                                        },
+                                        "BlendState": "Opaque",
+                                        "Properties": {},
+                                        "SamplerState": "LinearClamp",
+                                        "Shininess": 2.0,
+                                        "SpecularColor": {
+                                            "A": 1.0,
+                                            "B": 0.8999999761581421,
+                                            "G": 0.8999999761581421,
+                                            "R": 0.8999999761581421
+                                        },
+                                        "Textures": [
+                                            "Assets/Models/bocchi-the-rock-yamada-ryo/source/liang.fbm/1001_2D_View.png",
+                                            ""
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ],
+                                        "bFlipNormalGreen": false
+                                    }
+                                },
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BaseColor": {
+                                            "A": 1.0,
+                                            "B": 0.5882353186607361,
+                                            "G": 0.5882353186607361,
+                                            "R": 0.5882353186607361
+                                        },
+                                        "BlendState": "Opaque",
+                                        "Properties": {},
+                                        "SamplerState": "LinearClamp",
+                                        "Shininess": 1.9999998807907104,
+                                        "SpecularColor": {
+                                            "A": 1.0,
+                                            "B": 0.8999999761581421,
+                                            "G": 0.8999999761581421,
+                                            "R": 0.8999999761581421
+                                        },
+                                        "Textures": [
+                                            "Assets/Models/bocchi-the-rock-yamada-ryo/source/liang.fbm/头发.png",
+                                            ""
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ],
+                                        "bFlipNormalGreen": false
+                                    }
+                                },
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BaseColor": {
+                                            "A": 1.0,
+                                            "B": 0.5879999995231628,
+                                            "G": 0.5879999995231628,
+                                            "R": 0.5879999995231628
+                                        },
+                                        "BlendState": "Opaque",
+                                        "Properties": {},
+                                        "SamplerState": "LinearClamp",
+                                        "Shininess": 2.0,
+                                        "SpecularColor": {
+                                            "A": 1.0,
+                                            "B": 0.8999999761581421,
+                                            "G": 0.8999999761581421,
+                                            "R": 0.8999999761581421
+                                        },
+                                        "Textures": [
+                                            "Assets/Models/bocchi-the-rock-yamada-ryo/source/liang.fbm/身体.png",
+                                            ""
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ],
+                                        "bFlipNormalGreen": false
+                                    }
+                                },
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BaseColor": {
+                                            "A": 1.0,
+                                            "B": 0.5879999995231628,
+                                            "G": 0.5879999995231628,
+                                            "R": 0.5879999995231628
+                                        },
+                                        "BlendState": "Opaque",
+                                        "Properties": {},
+                                        "SamplerState": "LinearClamp",
+                                        "Shininess": 2.0,
+                                        "SpecularColor": {
+                                            "A": 1.0,
+                                            "B": 0.8999999761581421,
+                                            "G": 0.8999999761581421,
+                                            "R": 0.8999999761581421
+                                        },
+                                        "Textures": [
+                                            "Assets/Models/bocchi-the-rock-yamada-ryo/source/liang.fbm/左眼.png",
+                                            ""
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ],
+                                        "bFlipNormalGreen": false
+                                    }
+                                },
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BaseColor": {
+                                            "A": 1.0,
+                                            "B": 0.5879999995231628,
+                                            "G": 0.5879999995231628,
+                                            "R": 0.5879999995231628
+                                        },
+                                        "BlendState": "Opaque",
+                                        "Properties": {},
+                                        "SamplerState": "LinearClamp",
+                                        "Shininess": 2.0,
+                                        "SpecularColor": {
+                                            "A": 1.0,
+                                            "B": 0.8999999761581421,
+                                            "G": 0.8999999761581421,
+                                            "R": 0.8999999761581421
+                                        },
+                                        "Textures": [
+                                            "Assets/Models/bocchi-the-rock-yamada-ryo/source/liang.fbm/右眼.png",
+                                            ""
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ],
+                                        "bFlipNormalGreen": false
+                                    }
+                                }
+                            ],
+                            "Parent": "DefaultSceneRoot",
+                            "Properties": {
+                                "ShowBeginOverlapLog": false,
+                                "ShowEndOverlapLog": false,
+                                "ShowHitLog": false,
+                                "SkeletalMesh": "Models/bocchi-the-rock-yamada-ryo/source/liang.fbx",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.009999999776482582,
+                                        "Y": 0.009999999776482582,
+                                        "Z": 0.009999999776482582
+                                    }
+                                },
+                                "bBlockComponet": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "ASkeletalMeshActor_0",
+                    "Properties": {},
+                    "RootComponent": "DefaultSceneRoot"
+                }
+            ],
+            "Properties": {}
+        },
+        "Properties": {}
+    }
+}

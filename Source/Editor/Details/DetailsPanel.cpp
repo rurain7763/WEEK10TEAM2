@@ -10,6 +10,7 @@
 #include "Component/StaticMeshComponent.h"
 #include "Component/SkeletalMeshComponent.h"
 #include "Component/TextRenderComponent.h"
+#include "Component/DecalComponent.h"
 #include "Component/ParticleSubUVComponent.h"
 #include "Component/RotatingMovementComponent.h"
 #include "Component/ProjectileMovementComponent.h"
@@ -1171,6 +1172,12 @@ namespace
 				ComponentNameInputBuf[0] = '\0';
 				ImGui::CloseCurrentPopup();
 			}
+			if (ImGui::MenuItem("Decal Component")) {
+				OutSelectedComponent = Actor->AddComponent(UDecalComponent::StaticClass(), FString{ ComponentNameInputBuf });
+				ComponentNameInputBuf[0] = '\0';
+				ImGui::CloseCurrentPopup();
+			}
+
 			if (ImGui::MenuItem("Text Component"))
 			{
 				OutSelectedComponent = Actor->AddComponent(UTextRenderComponent::StaticClass(), FString(ComponentNameInputBuf));
@@ -1368,6 +1375,19 @@ void FDetailsPanel::OnRender()
 			{
 				DrawMaterialSlots(MeshComponent);
 			}
+			if (UDecalComponent* Decal{ Cast<UDecalComponent>(TargetComponent) }) {
+				ImGui::SeparatorText("Decal Material");
+				UMaterial* Material{ Decal->GetDecalMaterial() };
+				DrawTextureSlot(&Material, 0);
+				Decal->SetDecalMaterial(Material);
+				if (ImGui::Button("Clear Material")) {
+					Decal->SetDecalMaterial(nullptr);
+				}
+
+				ImGui::TextDisabled("DecalSize: half extents (X: depth, Y: width, Z: height)");
+				ImGui::TextDisabled("Projection direction: local +X");
+			}
+
 			if (ULightComponent* Light = Cast<ULightComponent>(TargetComponent))
 			{
 				ImGui::SeparatorText("Shadow Map");
