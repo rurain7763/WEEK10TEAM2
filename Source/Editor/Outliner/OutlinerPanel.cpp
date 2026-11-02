@@ -160,6 +160,21 @@ void FOutlinerPanel::DrawActorNode(AActor* Actor)
     }
 }
 
+// 파괴 예정 액터의 이름 변경 및 삭제 예약 참조 정리
+void FOutlinerPanel::NotifyActorDestroyed(AActor* Actor)
+{
+    if (RenamingActor == Actor)
+    {
+        RenamingActor = nullptr;
+        bFocusRenameInput = false;
+        RenameBuffer[0] = '\0';
+    }
+    if (PendingDeleteActor == Actor)
+    {
+        PendingDeleteActor = nullptr;
+    }
+}
+
 void FOutlinerPanel::BeginRename(AActor* Actor)
 {
     if (!Actor)

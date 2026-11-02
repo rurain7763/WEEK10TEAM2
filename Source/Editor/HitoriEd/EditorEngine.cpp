@@ -46,7 +46,6 @@
 #include "Component/DecalComponent.h"
 #include "Engine/GameViewportClient.h"
 #include "Editor/SkeletalMeshPreviewTab.h"
-#include "Component/DecalComponent.h"
 
 namespace
 {
@@ -144,6 +143,7 @@ bool UEditorEngine::Init()
 
 	EditorUI->GetLevelTab()->SetGizmo(Gizmo.get());
 	EditorUI->GetLevelTab()->SetViewportsPanel(ViewportsPanel);
+	EditorUI->GetLevelTab()->SetIsPlayingViewQuery([this](int32 ViewIndex) { return IsPlayingView(ViewIndex); });
 
 	SceneRenderer.Init(Renderer);
 
@@ -191,6 +191,8 @@ bool UEditorEngine::Init()
 	// 아웃라이너·뷰포트 피킹이 같은 선택 목록을 쓰고, 바뀌면 한곳에서 기즈모·디테일·외곽선을 맞춘다.
 	OutlinerPanel->SetSelection(&Selection);
 	Selection.SetChangedCallback([this]() { SyncSelectionToEditors(); });
+	// 편집 월드의 액터 파괴와 에디터 참조 정리 연결
+	EditorWorld->OnActorDestroyed.AddRaw(this, &UEditorEngine::HandleActorDestroyed);
 	DetailsPanel->SetSelectionCallback(
 		[this](UActorComponent* Component)
 		{
@@ -227,6 +229,13 @@ bool UEditorEngine::Init()
 		[this](UActorComponent* Component)
 		{
 			DeleteComponent(Component);
+		}
+	);
+	// 버튼은 ImGui가 탭 목록을 도는 중에 눌리므로 바로 탭을 만들지 않고, 다음 Tick의 UpdateEditorTabs에서 연다
+	DetailsPanel->SetOpenPreviewCallback(
+		[this](USkeletalMesh* SkeletalMesh)
+		{
+			PendingPreviewMesh = SkeletalMesh;
 		}
 	);
 
@@ -359,7 +368,7 @@ void UEditorEngine::Tick(const float DeltaTime)
 	}
 	UpdateMultipleViewportState(DeltaTime);
 	TickWorldAndEditor(DeltaTime);
-	RenderMultipleViewports();
+	RenderViewports();
 	EndFrame();
 }
 
@@ -428,6 +437,16 @@ void UEditorEngine::UpdateMultipleViewportState(const float DeltaTime)
 	// 겹친 창은 Hover 선택에서 제외하고 우클릭 Capture를 우선한다.
 	if (ViewportsPanel->IsHovered() || ViewportsPanel->GetCapturedViewIndex() != InvalidViewIndex)
 		ViewportsPanel->SetEditorViewIndex(ViewportsPanel->GetActiveViewIndex());
+
+	// 에셋 탭 뷰포트도 레벨과 같은 카메라 속도·감도를 쓴다. 받을지는 각 탭의 패널이 Hover·Capture로 거른다.
+	// 휠은 레벨 View가 가져가지 않았을 때만 남아 있다.
+	FViewportInput TabInput;
+	TabInput.DeltaTime = DeltaTime;
+	TabInput.MoveSpeed = CameraSpeed;
+	TabInput.MouseSensitivity = SettingsPanel->GetSettings().MouseSensitivity;
+	TabInput.bEnabled = ::GetForegroundWindow() == MainWindow->GetHandle() && !ImGui::GetIO().WantTextInput;
+	for (const TUniquePtr<FEditorTab>& Tab : EditorUI->GetTabs())
+		Tab->RouteInput(TabInput);
 }
 
 // 월드를 한 번 Tick·Capture한 뒤 에디터와 피킹을 갱신한다.
@@ -459,7 +478,7 @@ void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 	}
 	// 라이트 프록시가 아래 UpdateAllTransforms에서 바뀐 작업 흐름으로 다시 계산되도록 먼저 반영한다.
 	ColorWorkflow::bLinear = SettingsPanel->GetSettings().bLinearWorkflow;
-	// 월드 캡처는 View마다 그릴 월드가 다르므로 RenderMultipleViewports에서 한다.
+	// 월드 캡처는 View마다 그릴 월드가 다르므로 RenderViewports에서 한다.
 	// PIE 중에도 PIE가 아닌 View에서는 EditorWorld 편집을 계속한다.
 	UpdateGizmoAndPicking();
 	//SCOPE_CYCLE_COUNTER(STAT_UpdateAllTransforms);
@@ -468,78 +487,82 @@ void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 		PlayWorld->GetScene().UpdateAllTransforms();
 }
 
-// View 월드 변경 시 캡처 갱신 및 활성 View별 렌더링
-void UEditorEngine::RenderMultipleViewports()
+// 레벨 탭의 뷰포트 슬롯과 에셋 탭 뷰를 같은 목록으로 모아 같은 조건으로 그린다. 별도 PIE 창은 따로 그린다.
+void UEditorEngine::RenderViewports()
 {
-	// 카메라 갱신 전 별도 PIE 창의 출력 크기 반영
+	// PIE 창 크기를 외부 View에 먼저 알려야 카메라 Override의 직교 폭 보정이 맞는다.
 	bPIEWindowRendered = false;
 	SceneRenderer.BeginFrame();
 	const bool bRenderPIEWindow = IsPIEInWindow() && UpdatePIEWindowTargets();
 	const FSceneRenderSettings SceneRenderSettings = MakeSceneRenderSettings();
 
-	// 월드 Tick 이후 게임 카메라의 동일 프레임 반영
+	// 월드 Tick으로 움직인 게임 카메라를 같은 프레임에 반영한다.
 	UpdatePIEViewCamera();
 
-	// 동일 월드 캡처 재사용 및 Viewport별 렌더 타깃 출력
+	TArray<FEditorTabView> TabViews;
+	for (const TUniquePtr<FEditorTab>& Tab : EditorUI->GetTabs())
+		Tab->CollectViews(TabViews);
+
+	// 같은 월드가 이어지면 캡처를 다시 하지 않는다.
 	UWorld* CapturedWorld = nullptr;
-	const auto RenderView = [&](const int32 ViewIndex)
-		{
-			const FViewport& Viewport = GetViewportForView(ViewIndex);
-			UWorld* ViewWorld = GetWorldForView(ViewIndex);
-			if (ViewWorld != CapturedWorld)
-			{
-				SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
-				RenderCollector.CaptureWorld(*ViewWorld);
-				CapturedWorld = ViewWorld;
-			}
-
-			{
-				SCOPE_CYCLE_COUNTER(STAT_BuildRenderQueue);
-				RenderCollector.BuildRenderQueue(Viewport, RenderQueue);
-			}
-
-			FSceneView SceneView = MakeSceneView(ViewIndex);
-
-			// 현재 Viewport가 소유한 DBuffer 포함 렌더 타깃 묶음
-			const FSceneRenderTargets& Targets = Viewport.GetRenderTargets();
-			RenderFrame(
-				SceneView,
-				SceneRenderSettings,
-				*ViewWorld,
-				Targets,
-				RenderQueue);
-
-			RenderOverlayPass(ViewIndex, *ViewWorld, Targets, SceneView.ViewProjection,
-				SceneView.Location, SceneView.Forward, RenderQueue);
-		};
-
-	for (int32 ViewIndex = 0; ViewIndex < FViewportsPanel::ViewCount; ++ViewIndex)
+	const auto PrepareWorld = [&](UWorld& ViewWorld)
 	{
-		const bool bActive = ViewportsPanel->IsViewActive(ViewIndex);
-		ViewportsPanel->SetView(ViewIndex, bActive);
-		if (bActive)
-		{
-			RenderView(ViewIndex);
-		}
+		if (&ViewWorld == CapturedWorld)
+			return;
+		SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
+		RenderCollector.CaptureWorld(ViewWorld);
+		CapturedWorld = &ViewWorld;
+	};
+
+	TArray<UWorld*> RenderedWorlds;
+	const auto AddRenderedWorld = [&RenderedWorlds](UWorld* World)
+	{
+		if (World && RenderedWorlds.Find(World) == -1)
+			RenderedWorlds.Add(World);
+	};
+	for (const FEditorTabView& TabView : TabViews)
+	{
+		FViewport& Viewport = *TabView.Viewport;
+		FViewportClient* Client = Viewport.GetActiveClient();
+		if (!Viewport.IsVisible() || !Client || !Client->GetWorld())
+			continue;
+		Viewport.EnsureRenderTargets();
+		UWorld& ViewWorld = *Client->GetWorld();
+		PrepareWorld(ViewWorld);
+		RenderFrame(Viewport, ViewWorld, MakeSceneView(Viewport), SceneRenderSettings, TabView.OverlayClient, TabView.Gizmo);
+		AddRenderedWorld(&ViewWorld);
 	}
 
-	// 패널 View 이후 별도 PIE 창 렌더링 및 백버퍼 복사
+	// 별도 PIE 창은 패널 View 뒤에 PlayWorld를 한 번 더 캡처해 그린다.
 	if (bRenderPIEWindow && IsViewActive(PIEViewIndex))
 	{
-		RenderView(PIEViewIndex);
+		UWorld& ViewWorld = *PIEWindowViewport.GetActiveClient()->GetWorld();
+		PrepareWorld(ViewWorld);
+		RenderFrame(PIEWindowViewport, ViewWorld, MakeSceneView(PIEWindowViewport), SceneRenderSettings, nullptr);
 		CopyPIEWindowToBackbuffer();
+		AddRenderedWorld(&ViewWorld);
 	}
 
-	// 패널 View와 별도 PIE View 월드의 그림자 갱신 상태 정리
-	for (int32 ViewIndex = 0; ViewIndex < FViewportsPanel::ViewCount + 1; ++ViewIndex)
-	{
-		UWorld* World = GetWorldForView(ViewIndex);
-		if (World == nullptr)
-		{
-			continue;
-		}
+	// 그림자 맵은 월드마다 이번 프레임에 한 번 갱신했으니 다음 프레임까지 다시 그리지 않는다.
+	AddRenderedWorld(EditorWorld);
+	AddRenderedWorld(PlayWorld);
+	for (UWorld* World : RenderedWorlds)
 		World->GetScene().ClearShadowDirty();
+}
+
+void UEditorEngine::RenderFrame(const FViewport& Viewport, UWorld& ViewWorld, const FSceneView& View, const FSceneRenderSettings& Settings,
+	FEditorViewportClient* OverlayClient, const FGizmo* ViewGizmo)
+{
+	{
+		SCOPE_CYCLE_COUNTER(STAT_BuildRenderQueue);
+		RenderCollector.BuildRenderQueue(Viewport, RenderQueue);
 	}
+
+	// 1. 씬과 후처리 (Linear 씬 컬러 → 표시용 sRGB)
+	RenderFrame(View, Settings, ViewWorld, Viewport.GetRenderTargets(), RenderQueue);
+
+	// 2. 오버레이 Pass: Grid·Gizmo·UUID는 sRGB 색으로 지정되므로 인코딩 뒤 표시용 타깃에 그린다. PIE UI도 여기서 얹는다
+	RenderOverlayPass(Viewport, OverlayClient, ViewWorld, View, RenderQueue, ViewGizmo);
 }
 
 void UEditorEngine::UpdatePIEViewCamera()
@@ -601,17 +624,16 @@ void UEditorEngine::UpdateEditorTabs()
 	//	EditorUI->RemoveTab(Index);
 	//}
 
-	//if (PendingPreviewMesh)
-	//{
-	//	OpenSkeletalMeshViewer(PendingPreviewMesh);
-	//	PendingPreviewMesh = nullptr;
-	//}
+	if (PendingPreviewMesh)
+	{
+		OpenSkeletalMeshViewer(PendingPreviewMesh);
+		PendingPreviewMesh = nullptr;
+	}
 
 }
 
-FSceneView UEditorEngine::MakeSceneView(int32 ViewIndex) const
+FSceneView UEditorEngine::MakeSceneView(const FViewport& Viewport) const
 {
-	const FViewport& Viewport = GetViewportForView(ViewIndex);
 	const FVector2 OutputSize = Viewport.GetOutputSize();
 	const FCameraProjection& Projection = Viewport.GetProjection();
 
@@ -740,6 +762,9 @@ void UEditorEngine::HandleOnPIEWorldChanged(UWorld* OldWorld, UWorld* NewWorld)
 
 	ResetSceneSelection();
 
+	// 이전 PIE 월드의 액터 파괴 구독 해제
+	OldWorld->OnActorDestroyed.RemoveAll(this);
+
 	if (PIEViewIndex != InvalidViewIndex)
 	{
 		GetViewportForView(PIEViewIndex).EndPlay();
@@ -750,17 +775,32 @@ void UEditorEngine::HandleOnPIEWorldChanged(UWorld* OldWorld, UWorld* NewWorld)
 	FLuaScriptSystem::Get().StopAllCoroutines();
 
 	PlayWorld = NewWorld;
-
+	if (PlayWorld)
+	{
+		// 새 PIE 월드의 액터 파괴와 에디터 참조 정리 연결
+		PlayWorld->OnActorDestroyed.AddRaw(this, &UEditorEngine::HandleActorDestroyed);
+	}
 	OutlinerPanel->SetWorld(NewWorld);
 }
 
-void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, const FSceneRenderTargets& Targets, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue)
+// 파괴 예정 액터의 선택·기즈모 드래그·아웃라이너 참조 정리
+void UEditorEngine::HandleActorDestroyed(AActor* Actor)
 {
-	// 실행 중인 PIE View에는 Grid·Gizmo·Outline 같은 에디터 표시를 그리지 않는다.
-	// 별도 PIE 창은 편집 입력이 없으므로 일시정지 중에도 게임 화면만 보인다.
-	const bool bShowEditorOverlay = !IsPlayingView(ViewIndex) && ViewIndex != PIEWindowViewIndex;
-	const FViewport& Viewport = GetViewportForView(ViewIndex);
+	Selection.Remove(Actor);
+	GizmoDragStarts.Reset();
+	OutlinerPanel->NotifyActorDestroyed(Actor);
+}
 
+void UEditorEngine::RenderOverlayPass(const FViewport& Viewport, FEditorViewportClient* OverlayClient, UWorld& ViewWorld, const FSceneView& View, FRenderQueue& RenderQueue, const FGizmo* ViewGizmo)
+{
+	// 실행 중인 PIE View와 별도 PIE 창은 OverlayClient가 없어 Grid·Gizmo·Outline 같은 에디터 표시를 그리지 않는다.
+	const bool bShowEditorOverlay = OverlayClient != nullptr;
+	const FSceneRenderTargets& Targets = Viewport.GetRenderTargets();
+	const FMatrix& ViewProjection = View.ViewProjection;
+	const FVector& ViewCameraLocation = View.Location;
+	const FVector& ViewCameraForward = View.Forward;
+
+	// 현재 Viewport의 최종 출력과 깊이 타깃 유지
 	FRenderingInfo PassInfo;
 	PassInfo.ViewportSetting.Width = Targets.Width;
 	PassInfo.ViewportSetting.Height = Targets.Height;
@@ -786,26 +826,15 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 		{
 			LineBatcher->BuildVertexBuffer(ViewWorld);
 		}
-
-		for (TObjectIterator<UDirectionalLightComponent> DirLight; DirLight; ++DirLight)
+		// 미리보기 월드의 라이트는 편집 대상이 아니라 조명용이라 방향 표시 선을 그리지 않는다
+		const bool bPreviewWorld = ViewWorld.GetWorldType() == EWorldType::EditorPreview;
+		for (TObjectIterator<UDirectionalLightComponent> DirLight; DirLight && !bPreviewWorld; ++DirLight)
 		{
 			if (DirLight && DirLight->GetOwner() && DirLight->GetOwner()->GetWorld() == &ViewWorld)
 			{
 				DirLight->DrawDebug(LineBatcher.get());
 			}
 		}
-
-		// Point·Spot 라이트의 범위는 선택된 액터의 라이트만 그린다 (Spot의 IsDebugLine이 켜져 있으면 항상).
-		// 반복자는 파생 클래스도 돌기 때문에 Spot도 여기서 함께 그린다.
-		for (TObjectIterator<UPointLightComponent> LocalLight; LocalLight; ++LocalLight)
-		{
-			AActor* Owner = LocalLight->GetOwner();
-			if (!Owner || Owner->GetWorld() != &ViewWorld)
-				continue;
-			if (Selection.IsSelected(Owner) || LocalLight->ShouldAlwaysDrawDebug())
-				LocalLight->DrawDebug(LineBatcher.get());
-		}
-
 		// 선택된 액터의 View별 데칼 볼륨 표시
 		for (TObjectIterator<UDecalComponent> It; It; ++It)
 		{
@@ -819,6 +848,16 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 			{
 				Decal->DrawDebug(LineBatcher.get());
 			}
+		}
+		// Point·Spot 라이트의 범위는 선택된 액터의 라이트만 그린다 (Spot의 IsDebugLine이 켜져 있으면 항상).
+		// 반복자는 파생 클래스도 돌기 때문에 Spot도 여기서 함께 그린다.
+		for (TObjectIterator<UPointLightComponent> LocalLight; LocalLight; ++LocalLight)
+		{
+			AActor* Owner = LocalLight->GetOwner();
+			if (!Owner || Owner->GetWorld() != &ViewWorld)
+				continue;
+			if (Selection.IsSelected(Owner) || LocalLight->ShouldAlwaysDrawDebug())
+				LocalLight->DrawDebug(LineBatcher.get());
 		}
 	}
 
@@ -838,7 +877,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 	// 원근은 픽셀 셰이더 Grid, 직교는 선 Grid를 쓴다 (언리얼 에디터와 같은 구분).
 	if (bShowEditorOverlay && Settings.bDrawGrid)
 	{
-		const EGridPlane GridPlane = Viewport.GetGridPlane();
+		const EGridPlane GridPlane = OverlayClient->GetGridPlane(Viewport.GetCamera().Transform.Rotation);
 
 		if (!Viewport.IsOrthographic())
 		{
@@ -855,7 +894,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 				GridPlane,
 				static_cast<float>(Settings.GridSpacing),
 				!Viewport.IsOrthographic() ||
-				Viewport.GetEditorClient()->GetCameraPreset() == EMultipleViewportsCameraPreset::OrthographicView,
+				OverlayClient->GetCameraPreset() == EMultipleViewportsCameraPreset::OrthographicView,
 				PassInfo.ViewportSetting
 			);
 		}
@@ -873,15 +912,13 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 		OutlineRenderer->OnRender(*Outline, ViewProjection, PassInfo.ViewportSetting, &ViewWorld);
 	}
 
-	if (bShowEditorOverlay && IsInViewWorld(Gizmo->GetTarget()))
+	// 기즈모는 탭마다 따로다. 레벨 View는 엔진 Gizmo, 에셋 탭은 자기 Gizmo를 넘긴다
+	if (bShowEditorOverlay && ViewGizmo && IsInViewWorld(ViewGizmo->GetTarget()))
 	{
-		//auto Target = Cast<UPrimitiveComponent>(Gizmo->GetTarget());
-		//FBox box = Target->CalcBounds();
-
 		RenderCommand::ClearDepthStencil(Targets.Depth.get());
 
 		GizmoRenderer->OnRender(
-			*Gizmo,
+			*ViewGizmo,
 			ViewProjection,
 			ViewCameraLocation,
 			Viewport.IsOrthographic());
@@ -929,7 +966,8 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 		}
 	}
 
-	if (GameViewport && IsPlayingView(ViewIndex))
+	// 게임 UI는 Game Client가 그리는 View가 실행 중일 때만 얹는다
+	if (GameViewport && Viewport.HasGameClient() && !bIsPaused)
 	{
 		GameViewport->CollectDrawList(PassInfo.ViewportSetting.Width, PassInfo.ViewportSetting.Height);
 		GameViewport->Draw(PassInfo.ViewportSetting.Width, PassInfo.ViewportSetting.Height, *TextRenderer);
@@ -1243,8 +1281,15 @@ void UEditorEngine::PresentFrame()
 // ImGui를 정리한다. UObject 일괄 삭제와 공용 자원·Device 정리는 FEngineLoop가 이어서 한다.
 void UEditorEngine::PreExit()
 {
+	// 에셋 탭은 자기 월드(Preview)를 가진다. 종료 때 모든 UObject가 한꺼번에 지워지기 전에 탭을 먼저 닫아
+	// 탭이 자기 월드를 정리하게 한다. 늦게 지우면 이미 해제된 월드를 정리하려다 터진다
+	while (EditorUI->GetTabs().Num() > 1)
+		EditorUI->RemoveTab(EditorUI->GetTabs().Num() - 1);
+
 	if (EditorWorld)
 	{
+		// 편집 월드 종료 전 액터 파괴 구독 해제
+		EditorWorld->OnActorDestroyed.RemoveAll(this);
 		DestroyWorldContext(EditorWorld);
 		EditorWorld = nullptr;
 	}
@@ -1324,11 +1369,13 @@ void UEditorEngine::StartPlayInEditorSession()
 	PlayWorld = CreatePIEWorldByDuplication(PIEContext, EditorWorld);
 	PIEContext.OnWorldChanged.AddRaw(this, &UEditorEngine::HandleOnPIEWorldChanged);
 
+	// PIE 시작 전 편집 선택 해제 및 아웃라이너 월드 전환
 	ResetSceneSelection();
 	if (PlayWorld)
 	{
+		// BeginPlay 중 액터 파괴까지 포함하는 PIE 월드 구독
+		PlayWorld->OnActorDestroyed.AddRaw(this, &UEditorEngine::HandleActorDestroyed);
 		OutlinerPanel->SetWorld(PlayWorld);
-
 		GameViewport = NewObject<UGameViewportClient>(nullptr, FName("MainViewport"));
 
 		PlayWorld->BeginPlay();
@@ -1349,6 +1396,7 @@ void UEditorEngine::StartPlayInEditorSession()
 			PlayerController->UpdateCamera(0.0f);
 		}
 	}
+
 }
 
 UWorld* UEditorEngine::CreatePIEWorldByDuplication(FWorldContext& PIEContext, UWorld* InEditorWorld)

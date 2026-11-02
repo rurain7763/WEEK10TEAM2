@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "LevelEditorTab.h"
+#include "Editor/Viewports/ViewportsPanel.h"
 
 
 namespace
@@ -19,7 +20,20 @@ namespace
 FLevelEditorTab::FLevelEditorTab()
 	: FEditorTab(MakeLevelTabSettings())
 {
+}
 
+void FLevelEditorTab::CollectViews(TArray<FEditorTabView>& OutViews)
+{
+	if (!ViewportsPanel)
+		return;
 
-
+	for (int32 ViewIndex = 0; ViewIndex < FViewportsPanel::ViewCount; ++ViewIndex)
+	{
+		FEditorTabView View;
+		View.Viewport = &ViewportsPanel->GetViewport(ViewIndex);
+		const bool bPlaying = IsPlayingViewQuery && IsPlayingViewQuery(ViewIndex);
+		View.OverlayClient = bPlaying ? nullptr : &ViewportsPanel->GetEditorClient(ViewIndex);
+		View.Gizmo = Gizmo;
+		OutViews.Add(View);
+	}
 }

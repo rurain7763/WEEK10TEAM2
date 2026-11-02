@@ -50,10 +50,13 @@ void FEditorTab::ResolveDockSpaceId()
 void FEditorTab::SubmitDockSpace(bool bVisible, ImGuiDockNodeFlags Flags)
 {
 	//이 ID의 도킹 노드가 아직 없을 때만 새로 만들고, 기본 배치까지 잡아준다. 이후에는 imgui.ini가 기억한다.
-	if (!ImGui::DockBuilderGetNode(DockSpaceId))
+	// 기본 배치는 탭이 보여서 영역 크기가 있을 때만 만든다. 막 추가된 탭은 첫 프레임에 아직 선택되지 않아
+	// 영역이 0이고, 0 크기는 DockBuilderSetNodeSize가 assert로 막는다.
+	const ImVec2 Avail = ImGui::GetContentRegionAvail();
+	if (bVisible && Avail.x > 0.0f && Avail.y > 0.0f && !ImGui::DockBuilderGetNode(DockSpaceId))
 	{
 		ImGui::DockBuilderAddNode(DockSpaceId, ImGuiDockNodeFlags_DockSpace);
-		ImGui::DockBuilderSetNodeSize(DockSpaceId, ImGui::GetContentRegionAvail());
+		ImGui::DockBuilderSetNodeSize(DockSpaceId, Avail);
 		BuildDefaultLayout(DockSpaceId);
 		ImGui::DockBuilderFinish(DockSpaceId);
 	}

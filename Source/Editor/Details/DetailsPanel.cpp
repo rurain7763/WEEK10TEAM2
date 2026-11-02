@@ -1541,6 +1541,16 @@ void FDetailsPanel::OnRender()
 				DrawProperties(TargetComponent, CustomFont);
 			}
 
+			// 스켈레탈 메시가 지정된 컴포넌트면 그 메시를 미리보기 탭으로 연다
+			if (USkinnedMeshComponent* SkinnedComponent = Cast<USkinnedMeshComponent>(TargetComponent))
+			{
+				USkeletalMesh* PreviewMesh = SkinnedComponent->GetSkeletalMesh();
+				ImGui::BeginDisabled(!PreviewMesh || !OpenPreviewCallback);
+				if (ImGui::Button("Open Preview", ImVec2(-1.0f, 0.0f)))
+					OpenPreviewCallback(PreviewMesh);
+				ImGui::EndDisabled();
+			}
+
 			if(SelectCandidateComponent != TargetComponent)
 			{
 				SelectComponent(TargetComponent);

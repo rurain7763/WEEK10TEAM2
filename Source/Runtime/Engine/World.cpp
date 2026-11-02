@@ -630,10 +630,6 @@ bool UWorld::DestroyActor(AActor* Actor)
 		{
 			Scene.RemoveLight(Light);
 		}
-		else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
-		{
-			Scene.RemoveDecal(Decal);
-		}
 	}
 
 	Actor->RegisterAllActorTickFunctions(false);
@@ -647,6 +643,9 @@ bool UWorld::DestroyActor(AActor* Actor)
 	{
 		PlayerController->NotifyActorDestroyed(Actor);
 	}
+
+	// 액터 메모리 해제 이전의 외부 참조 정리 통지
+	OnActorDestroyed.Broadcast(Actor);
 
 	// 4. Actor 삭제
 	delete Actor;

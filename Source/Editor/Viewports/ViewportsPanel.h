@@ -65,10 +65,6 @@ public:
 	// 활성 View의 패널 로컬 마우스 좌표를 역투영해 Ray로 반환한다. 마우스가 다른 View 위면 false다.
 	bool TryGetActiveViewRay(FVector2 LocalMousePosition, FRay& OutRay) const;
 
-	// View 활성 상태 반영 및 Viewport의 출력 크기별 렌더 타깃 준비
-	void SetView(int32 ViewIndex, bool bActive);
-
-
 	FVector2 GetContentSize() const { return {ContentSize.x, ContentSize.y}; }
 	FVector2 GetLocalMousePosition() const;
 	bool IsHovered() const;

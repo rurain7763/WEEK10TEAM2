@@ -52,5 +52,11 @@ void FPreviewScene::HideIcons(AActor* Actor)
 }
 FPreviewScene::~FPreviewScene()
 {
+    if (!PreviewWorld)
+        return;
 
+    // BeginPlay를 하지 않은 월드라 EndPlay 없이 컨텍스트를 돌려준다.
+    // DestroyWorldContext가 UWorld::DestroyWorld로 ClearWorld·Cleanup·delete까지 하므로 여기서 다시 지우지 않는다
+    GEngine->DestroyWorldContext(PreviewWorld);
+    PreviewWorld = nullptr;
 }

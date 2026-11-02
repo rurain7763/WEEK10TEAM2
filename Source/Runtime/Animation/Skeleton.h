@@ -10,9 +10,10 @@ class USkeleton : public UAsset
 public:
 	void Initialize(const TArray<FModelNode>& InNodes, const TArray<FModelBone>& InBones);
 
-	const TArray<FModelNode> GetNodes() const;
+	// 배열을 복사하지 않고 빌려준다. 스키닝·본 트리가 매 프레임 읽는다
+	const TArray<FModelNode>& GetNodes() const;
 
-	const TArray<FModelBone> GetBones() const;
+	const TArray<FModelBone>& GetBones() const;
 
 private:
 	TArray<FModelNode> Nodes;

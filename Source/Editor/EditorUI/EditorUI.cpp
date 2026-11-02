@@ -113,10 +113,12 @@ void FEditorUI::DrawTabBar(ImGuiDockNodeFlags DockSpaceFlags)
 	for (auto& Tab : Tabs)
 		Tab->ResolveDockSpaceId();
 
+	// 탭 바는 한 번만 열고 닫는다. 탭마다 열면 탭이 둘 이상일 때 Begin/End 짝이 어긋난다
+	if (!ImGui::BeginTabBar("EditorTabs", ImGuiTabBarFlags_Reorderable))
+		return;
+
 	for (auto& Tab : Tabs)
 	{
-		if (!ImGui::BeginTabBar("EditorTabs", ImGuiTabBarFlags_Reorderable))
-			return;
 		//이 탭으로 전환하라는 요청이있었는지 확인
 		const ImGuiTabItemFlags ItemFlags = Tab->ConsumeFocusRequest() ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
 		//그리기

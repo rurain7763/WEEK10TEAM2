@@ -24,6 +24,8 @@ public:
 
 		return Ret;
 	}
+	// 탭을 지운다. 레벨 탭(0번)은 지우지 않는다. 탭이 월드를 가지므로 ImGui 프레임 밖(엔진 Tick·종료)에서 부른다
+	void RemoveTab(int32 Index) { if (Index > 0 && Index < Tabs.Num()) Tabs.RemoveAt(Index); }
 	FLevelEditorToolbar* GetToolbar() const { return Toolbar.get(); }
 
 	void SetNewSceneCallback(std::function<void()> InCallback) { OnNewScene = InCallback; }
