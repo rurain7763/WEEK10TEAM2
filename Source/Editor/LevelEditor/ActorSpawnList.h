@@ -8,6 +8,7 @@
 #include "GameFramework/Actor/DirectionalLightActor.h"
 #include "GameFramework/Actor/PointLightActor.h"
 #include "GameFramework/Actor/SpotLightActor.h"
+#include "GameFramework/Actor/SkeletalMeshActor.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/DefaultPawn.h"
 #include "GameFramework/PlayerStart.h"
@@ -30,6 +31,7 @@ inline constexpr FSpawnableActorType SpawnableActorTypes[] =
 {
 	{ "Actor",                &AActor::StaticClass },
 	{ "StaticMesh",           &AStaticMeshActor::StaticClass },
+	{ "SkeletalMesh",         &ASkeletalMeshActor::StaticClass },
 	{ "LevelSequence",        &ALevelSequenceActor::StaticClass },
 	{ "Particle",             &AParticleActor::StaticClass },
 	{ "Text",                 &ATextRenderActor::StaticClass },
