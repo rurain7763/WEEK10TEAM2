@@ -7,6 +7,8 @@ bool FEditorUI::Init(bool bInUseDockSpace, bool bInPassthruCentralNode)
 	bUseDockSpace = bInUseDockSpace;
 	bPassthruCentralNode = bInPassthruCentralNode;
 
+
+	Tabs.Add(MakeUnique<FLevelEditorTab>());
 	Toolbar = MakeUnique<FLevelEditorToolbar>();
 
 	return true;
@@ -14,10 +16,9 @@ bool FEditorUI::Init(bool bInUseDockSpace, bool bInPassthruCentralNode)
 
 void FEditorUI::Tick(float DeltaTime)
 {
-	for (auto& Panel : Panels)
+	for (auto& Tab : Tabs)
 	{
-
-		Panel->Tick(DeltaTime);
+		Tab->Tick(DeltaTime);
 	}
 }
 
@@ -91,22 +92,40 @@ void FEditorUI::OnRender()
 		ImGuiStyle& style = ImGui::GetStyle();
 		float minWinSizeX = style.WindowMinSize.x;
 		style.WindowMinSize.x = 370.0f;
+
+		
 		if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
 		{
-			ImGuiID dockspace_id = ImGui::GetID("EngineDockingSpace");
-			ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspaceFlags);
+			DrawTabBar(dockspaceFlags);
 		}
 
 		ImGui::End();
 	}
 
-	for (auto& Panel : Panels)
+	for (auto& Tab : Tabs)
 	{
-		if (Panel->IsOpen())
-		{
-			Panel->OnRender();
-		}
+		Tab->RenderPanels();
 	}
+}
+
+void FEditorUI::DrawTabBar(ImGuiDockNodeFlags DockSpaceFlags)
+{
+	for (auto& Tab : Tabs)
+		Tab->ResolveDockSpaceId();
+
+	for (auto& Tab : Tabs)
+	{
+		if (!ImGui::BeginTabBar("EditorTabs", ImGuiTabBarFlags_Reorderable))
+			return;
+		//이 탭으로 전환하라는 요청이있었는지 확인
+		const ImGuiTabItemFlags ItemFlags = Tab->ConsumeFocusRequest() ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+		//그리기
+		const bool bSelected = ImGui::BeginTabItem(Tab->GetTitle(), Tab->GetOpenFlag(), ItemFlags);
+		Tab->SubmitDockSpace(bSelected, DockSpaceFlags);
+		if (bSelected)
+			ImGui::EndTabItem();
+	}
+	ImGui::EndTabBar();
 }
 
 // 파일 메뉴의 요청을 애플리케이션 콜백으로 전달한다.
@@ -132,13 +151,15 @@ void FEditorUI::DrawMainMenuBar()
 
 		if (ImGui::BeginMenu("Window"))
 		{
-			for (auto& Panel : Panels)
-			{
-				bool bOpen = Panel->IsOpen();
+			// 레벨 탭 패널은 예전처럼 바로 보이고, 나머지 탭은 하위 메뉴로 묶는다
+			DrawPanelMenuItems(*Tabs[0]);
 
-				if (ImGui::MenuItem(Panel->GetPanelName(), nullptr, bOpen))
+			for (int32 Index = 1; Index < Tabs.Num(); ++Index)
+			{
+				if (ImGui::BeginMenu(Tabs[Index]->GetTitle()))
 				{
-					Panel->SetOpen(!bOpen);
+					DrawPanelMenuItems(*Tabs[Index]);
+					ImGui::EndMenu();
 				}
 			}
 			ImGui::EndMenu();
@@ -147,4 +168,17 @@ void FEditorUI::DrawMainMenuBar()
 		ImGui::EndMainMenuBar();
 	}
 	ImGui::PopStyleVar(2);
+}
+
+void FEditorUI::DrawPanelMenuItems(const FEditorTab& Tab)
+{
+	for (auto& Panel : Tab.GetPanels())
+	{
+		bool bOpen = Panel->IsOpen();
+
+		if (ImGui::MenuItem(Panel->GetPanelName(), nullptr, bOpen))
+		{
+			Panel->SetOpen(!bOpen);
+		}
+	}
 }

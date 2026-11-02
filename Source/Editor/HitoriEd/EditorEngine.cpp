@@ -94,7 +94,7 @@ bool UEditorEngine::Init()
 	EditorUI->SetSaveSceneCallback([this]() { SaveCurrentScene(); });
 	EditorUI->SetSaveSceneAsCallback([this]() { SaveSceneAs(); });
 
-	OutputLogPanel = EditorUI->AddEditorPanel<FOutputLogPanel>();
+	OutputLogPanel = EditorUI->GetLevelTab()->AddPanel<FOutputLogPanel>();
 	FLog::AddSink(OutputLogPanel);
 	HTR_LOG(Info, "Editor Initialize...");
 
@@ -115,14 +115,17 @@ bool UEditorEngine::Init()
 	Gizmo = MakeUnique<FGizmo>();
 
 	// 필요한 Panel들 추가후 raw pointer 반환(소유권 = EditorUI)
-	DetailsPanel = EditorUI->AddEditorPanel<FDetailsPanel>();
-	ViewportsPanel = EditorUI->AddEditorPanel<FViewportsPanel>();
-	ContentDrawerPanel = EditorUI->AddEditorPanel<FContentDrawerPanel>();
-	LevelSequencerPanel = EditorUI->AddEditorPanel<FLevelSequencePanel>();
+	DetailsPanel = EditorUI->GetLevelTab()->AddPanel<FDetailsPanel>();
+	ViewportsPanel = EditorUI->GetLevelTab()->AddPanel<FViewportsPanel>();
+	ContentDrawerPanel = EditorUI->GetLevelTab()->AddPanel<FContentDrawerPanel>();
+	LevelSequencerPanel = EditorUI->GetLevelTab()->AddPanel<FLevelSequencePanel>();
 	ContentDrawerPanel->SetOpenLevelSequenceBinding([this](const FString& Path)
 	{
 		LevelSequencerPanel->OpenSequenceFile(Path);
 	});
+
+	EditorUI->GetLevelTab()->SetGizmo(Gizmo.get());
+	EditorUI->GetLevelTab()->SetViewportsPanel(ViewportsPanel);
 
 	SceneRenderer.Init(Renderer);
 
@@ -130,7 +133,7 @@ bool UEditorEngine::Init()
 	OutlineRenderer = MakeUnique<FOutlineRenderer>();
 	OutlineRenderer->Init(Renderer);
 
-	SettingsPanel = EditorUI->AddEditorPanel<FSettingsPanel>();
+	SettingsPanel = EditorUI->GetLevelTab()->AddPanel<FSettingsPanel>();
 
 	//ToolbarPanel->SetPlayCallback([this]() { RequestPlaySession(); });
 	//ToolbarPanel->SetStopCallback([this]() { RequestEndPlayMap(); });
@@ -162,7 +165,7 @@ bool UEditorEngine::Init()
 	//SceneManager = EditorUI->AddEditorPanel<FSceneManager>();
 	//SceneManager->SetWorld(World);
 
-	OutlinerPanel = EditorUI->AddEditorPanel<FOutlinerPanel>();
+	OutlinerPanel = EditorUI->GetLevelTab()->AddPanel<FOutlinerPanel>();
 	OutlinerPanel->SetWorld(GetActiveWorld());
 	// 아웃라이너·뷰포트 피킹이 같은 선택 목록을 쓰고, 바뀌면 한곳에서 기즈모·디테일·외곽선을 맞춘다.
 	OutlinerPanel->SetSelection(&Selection);

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Editor/EditorUI/EditorPanel.h"
+#include "Editor/FEditorTab.h"
 
+#include "Editor/LevelEditor/LevelEditorTab.h"
 #include "Editor/LevelEditor/LevelEditorToolbar.h"
 
-#include <functional>
+#include <functional> 
 
 class FEditorUI
 {
@@ -13,29 +15,36 @@ public:
 	void Tick(float DeltaTime);
 	void OnRender();
 
-	template <typename T>
-	T* AddEditorPanel()
+	template <typename T, typename... TArgs>
+	T* AddTab(TArgs&&... Args)
 	{
-		TUniquePtr<T> newPanel = MakeUnique<T>();
-		T* Ret = newPanel.get();
-		Ret->Init();
-		Panels.Add(std::move(newPanel));
-		
+		TUniquePtr<T> NewTab = MakeUnique<T>(std::forward<TArgs>(Args)...);
+		T* Ret = NewTab.get();
+		Tabs.Add(std::move(NewTab));
+
 		return Ret;
 	}
-
 	FLevelEditorToolbar* GetToolbar() const { return Toolbar.get(); }
 
 	void SetNewSceneCallback(std::function<void()> InCallback) { OnNewScene = InCallback; }
 	void SetOpenSceneCallback(std::function<void()> InCallback) { OnOpenScene = InCallback; }
 	void SetSaveSceneCallback(std::function<void()> InCallback) { OnSaveScene = InCallback; }
 	void SetSaveSceneAsCallback(std::function<void()> InCallback) { OnSaveSceneAs = InCallback; }
+	//첫번째 탭은 무조건 레벨탭
+	FLevelEditorTab* GetLevelTab() const { return static_cast<FLevelEditorTab*>(Tabs[0].get()); }
+	//탭마다 도킹 스페이스가 생겨서 탭 이름을 띄워야한다.
+	void DrawTabBar(ImGuiDockNodeFlags DockSpaceFlags);
+
+
 
 private:
 	bool bUseDockSpace = true;
 	bool bPassthruCentralNode = false;
 
 	void DrawMainMenuBar();
+	void DrawPanelMenuItems(const FEditorTab& Tab);
+
+	TArray<TUniquePtr<FEditorTab>> Tabs;
 
 	TArray<TUniquePtr<IEditorPanel>> Panels;
 	TUniquePtr<FLevelEditorToolbar> Toolbar;
