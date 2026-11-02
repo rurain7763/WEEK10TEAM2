@@ -204,6 +204,8 @@ StructuredBuffer<uint> SpotTileList : register(t11);
 StructuredBuffer<FShadowInfo> StructuredShadowData : register(t12);
 
 #if USE_SKINNING
+// FXC는 StructuredBuffer 안의 행렬에 pack_matrix(row_major)를 적용하지 않고 열 우선으로 읽는다.
+// CPU 행 우선 행렬이 전치되어 들어오므로 꺼낼 때 transpose로 되돌린다
 StructuredBuffer<float4x4> BoneMatrices : register(t13);
 #endif
 
@@ -902,7 +904,7 @@ FPSInput mainVS(FVSInput Input)
     {
         int BoneIndex = Input.BoneIndices[i];
         float BoneWeight = Input.BoneWeights[i];
-        float4x4 BoneMatrix = BoneMatrices[BoneIndex];
+        float4x4 BoneMatrix = transpose(BoneMatrices[BoneIndex]);
         SkinnedPosition += mul(float4(Input.Position, 1.0), BoneMatrix).xyz * BoneWeight;
         SkinnedNormal += mul(Input.Normal, (float3x3) BoneMatrix) * BoneWeight;
         SkinnedTangent += mul(Input.Tangent.xyz, (float3x3) BoneMatrix) * BoneWeight;
