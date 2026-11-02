@@ -894,22 +894,29 @@ float3 WorldPosition, float3 V, float n, float2 PixelPosition, out float3 Diffus
     }
 }
 
-FPSInput mainVS(FVSInput Input)
+// 스키닝을 마친 로컬 공간 정점. 스키닝이 없으면 입력 그대로다
+struct FLocalVertex
 {
-    FPSInput Output;
+    float3 Position;
+    float3 Normal;
+    float3 Tangent;
+};
+
+FLocalVertex GetLocalVertex(FVSInput Input)
+{
+    FLocalVertex Vertex;
+    Vertex.Position = Input.Position;
+    Vertex.Normal = Input.Normal;
+    Vertex.Tangent = Input.Tangent.xyz;
 
 #if USE_SKINNING
+    if (Input.BoneInfluenceCount == 0)
+        return Vertex;
+
+    // 노멀·탄젠트도 위치와 같은 본 행렬(회전·스케일 부분)로 섞어야 굽힌 자세에서 음영이 따라온다
     float3 SkinnedPosition = float3(0, 0, 0);
     float3 SkinnedNormal = float3(0, 0, 0);
     float3 SkinnedTangent = float3(0, 0, 0);
-    if (Input.BoneInfluenceCount == 0)
-    {
-        SkinnedPosition = Input.Position;
-        SkinnedNormal = Input.Normal;
-        SkinnedTangent = Input.Tangent.xyz;
-    }
-
-    // 노멀·탄젠트도 위치와 같은 본 행렬(회전·스케일 부분)로 섞어야 굽힌 자세에서 음영이 따라온다
     for (int i = 0; i < Input.BoneInfluenceCount; i++)
     {
         int BoneIndex = Input.BoneIndices[i];
@@ -919,21 +926,35 @@ FPSInput mainVS(FVSInput Input)
         SkinnedNormal += mul(Input.Normal, (float3x3) BoneMatrix) * BoneWeight;
         SkinnedTangent += mul(Input.Tangent.xyz, (float3x3) BoneMatrix) * BoneWeight;
     }
-    SkinnedNormal = normalize(SkinnedNormal);
-    SkinnedTangent = normalize(SkinnedTangent);
-
-    float4 WorldPosition = mul(float4(SkinnedPosition, 1.0f), World);
-#else
-    float3 SkinnedNormal = Input.Normal;
-    float3 SkinnedTangent = Input.Tangent.xyz;
-    float4 WorldPosition = mul(float4(Input.Position, 1.0f), World);
+    Vertex.Position = SkinnedPosition;
+    Vertex.Normal = normalize(SkinnedNormal);
+    Vertex.Tangent = normalize(SkinnedTangent);
 #endif
+    return Vertex;
+}
+
+float3 GetLocalVertexPosition(FVSInput Input)
+{
+    return GetLocalVertex(Input).Position;
+}
+
+// 표면 진입점을 제외하는 라이브러리 사용 경계
+#ifndef UBER_LIT_LIBRARY_ONLY
+
+FPSInput mainVS(FVSInput Input)
+{
+    FPSInput Output;
+    
+    const FLocalVertex Local = GetLocalVertex(Input);
+    float4 WorldPosition = mul(float4(Local.Position, 1.0f), World);
 
     Output.Position = mul(WorldPosition, ViewProjection);
     Output.WorldPosition = WorldPosition.xyz;
-    Output.Normal = mul(SkinnedNormal, (float3x3) NormalMatrix);
+    Output.Normal = mul(Local.Normal, (float3x3) NormalMatrix);
+    Output.UV = Input.UV;
+
 #if USE_NORMAL_MAP
-    Output.Tangent = mul(SkinnedTangent, (float3x3) World);
+    Output.Tangent = mul(Local.Tangent, (float3x3) World);
     Output.BitangentSign = Input.Tangent.w;
 #endif
     Output.UV = Input.UV;
