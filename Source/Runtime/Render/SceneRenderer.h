@@ -2,6 +2,7 @@
 
 #include "ShadowFilterSettings.h"
 #include "ViewMode.h"
+#include "DecalRenderData.h"
 #include "Camera/CameraTypes.h"
 
 class FDepthViewRenderer;
@@ -17,6 +18,7 @@ class FTexture2D;
 struct FRenderingInfo;
 class UWorld;
 class FRenderer;
+class FDecalRenderer;
 
 struct FSceneView
 {
@@ -57,13 +59,13 @@ public:
 
 	void Init(FRenderer* InRenderer);
 	void BeginFrame();
-	void Render(UWorld& World, const FSceneView& SceneView, const FSceneRenderSettings& Settings,
-		const FRenderingInfo& SceneInfo, const FRenderingInfo& ViewInfo, FTexture2D* FxaaTemp, FRenderQueue& RenderQueue);
+	void Render(UWorld& World, const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FRenderingInfo& SceneInfo, const FRenderingInfo& ViewInfo, FTexture2D* FxaaTemp, FRenderQueue& RenderQueue);
 
 private:
 	// 불투명 물체에 대한 Pass
-	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld,
-		const FRenderingInfo& SceneInfo, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
+	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FRenderingInfo& SceneInfo, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
+	void RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FRenderingInfo& SceneInfo);
+	void RenderTranslucentPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FRenderingInfo& SceneInfo);
 	// 월드에 배치된 텍스트 그리기
 	void DrawWorldText(const FSceneView& SceneView, const UWorld& ViewWorld);
 	// 안개에 대한 Pass
@@ -76,6 +78,10 @@ private:
 	void RenderFXAAPass(FTexture2D* FxaaTarget, const FRenderingInfo& ViewInfo);
 	// Depth Pass
 	void RenderDepthPass(const FSceneView& SceneView, const FRenderingInfo& ViewInfo);
+
+private:
+	TUniquePtr<FDecalRenderer> mDecalRenderer{};
+	TArray<FDecalRenderData> mDecals{};
 
 	FRenderer* Renderer = nullptr;
 	TUniquePtr<FSkyboxRenderer> SkyboxRenderer;

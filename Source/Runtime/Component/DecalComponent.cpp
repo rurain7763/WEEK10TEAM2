@@ -82,6 +82,7 @@ void UDecalComponent::DrawDebug(FLineBatcher* LineBatcher) const {
 	constexpr float ArrowHeadLength{ 0.25f };
 	constexpr float ArrowHeadWidth{ 0.2f };
 	const FVector Center{ GetWorldLocation() };
+	
 	const FQuat Rotation{ GetWorldRotation().Quaternion() };
 	const FVector Forward{ Rotation.GetForwardVector() };
 	const FVector Right{ Rotation.GetRightVector() };
@@ -90,6 +91,7 @@ void UDecalComponent::DrawDebug(FLineBatcher* LineBatcher) const {
 	const FVector End{ Center + Forward * ArrowHalfLength };
 	const FVector HeadLeft{ End - Forward * ArrowHeadLength + Right * ArrowHeadWidth };
 	const FVector HeadRight{ End - Forward * ArrowHeadLength - Right * ArrowHeadWidth };
+
 	LineBatcher->AddLine(Start, End, Color);
 	LineBatcher->AddLine(End, HeadLeft, Color);
 	LineBatcher->AddLine(End, HeadRight, Color);

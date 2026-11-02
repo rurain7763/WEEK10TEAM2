@@ -42,6 +42,7 @@ public:
 	FMatrix ApplyScale(float Scale) const;
 	FMatrix GetTransposed() const;
 	FMatrix Inverse() const;
+	bool TryInverse(FMatrix& OutInverse) const;
 
 	FMatrix Multiply(const FMatrix& Other) const;
 

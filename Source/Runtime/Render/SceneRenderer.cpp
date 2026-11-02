@@ -2,6 +2,7 @@
 #include "SceneRenderer.h"
 
 #include "ColorWorkflow.h"
+#include "DecalRenderer.h"
 #include "DepthViewRenderer.h"
 #include "FogRenderer.h"
 #include "FXAARenderer.h"
@@ -25,6 +26,11 @@ FSceneRenderer::~FSceneRenderer() = default;
 void FSceneRenderer::Init(FRenderer* InRenderer)
 {
 	Renderer = InRenderer;
+
+	mDecalRenderer = MakeUnique<FDecalRenderer>();
+	if (!mDecalRenderer->Init()) {
+		mDecalRenderer.reset();
+	}
 
 	SkyboxRenderer = MakeUnique<FSkyboxRenderer>();
 	SkyboxRenderer->Init(ResourcePaths::DefaultSkyPanorama);
@@ -50,9 +56,7 @@ void FSceneRenderer::BeginFrame()
 	bShadowAtlasRenderedThisFrame = false;
 }
 
-void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FSceneRenderSettings& Settings,
-	const FRenderingInfo& SceneInfo, const FRenderingInfo& ViewInfo, FTexture2D* FxaaTemp, FRenderQueue& RenderQueue)
-{
+void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FRenderingInfo& SceneInfo, const FRenderingInfo& ViewInfo, FTexture2D* FxaaTemp, FRenderQueue& RenderQueue) {
 	FLightingConstants Lighting;
 	FShadowStats ShadowStats{};
 	TArray<FPointLightInfo> PointLights;
@@ -115,7 +119,9 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 	FStatOverlay::SetShadowStats(ShadowStats);
 
 	// 1. 불투명·반투명 Pass (Linear 씬 컬러)
-	RenderOpaquePass(SceneView, Settings, World, SceneInfo, RenderQueue, Lighting.Directional);
+	RenderOpaquePass(SceneView, Settings, SceneInfo, RenderQueue, Lighting.Directional);
+	RenderDecalPass(SceneView, Settings, World, SceneInfo);
+	RenderTranslucentPass(SceneView, Settings, World, SceneInfo);
 
 	if (Settings.bDepthView)
 	{
@@ -144,9 +150,7 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 	}
 }
 
-void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, 
-									  const FRenderingInfo& SceneInfo, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight)
-{
+void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FRenderingInfo& SceneInfo, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight) {
 	// 뷰 모드가 셰이더 permutation을, Wireframe 여부가 Fill Mode를 정한다. 삼각형 연결은 그대로다.
 	const FViewRenderMode ViewRenderMode = SceneView.RenderMode;
 	const bool bVisualizeLightCount = Settings.bVisualizeTileLightCount;
@@ -188,14 +192,52 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 		// Grid는 깊이를 쓰지 않는 반투명 위에도 겹칠 수 있지만, 언리얼의 에디터 프리미티브처럼 Overlay Pass에서 마지막에 합성한다.
 		Renderer->RenderQueueSorting(RenderQueue, SceneView.ViewProjection, SceneView.Location);
 		Renderer->RenderOpaque(SceneView.ViewProjection);
-		DrawWorldText(SceneView, ViewWorld);
-		RenderCommand::SetRasterizerState(SceneRasterizerState); // TextRenderer가 상태를 바꾸므로 되돌림
-		Renderer->RenderTranslucent(SceneView.ViewProjection);
 		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
 		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 	}
 
 
+	RenderCommand::EndRenderPass();
+}
+
+void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FRenderingInfo& SceneInfo) {
+	const EViewMode ViewMode{ SceneView.RenderMode.ViewMode };
+	if (!mDecalRenderer || !Settings.bDrawPrimitives || Settings.bDepthView || (ViewMode != EViewMode::Lit && ViewMode != EViewMode::Unlit) || !SceneInfo.DepthStencil.Texture) {
+		return;
+	}
+
+	ViewWorld.GetScene().BuildDecalRenderData(mDecals, ViewWorld.GetWorldType() != EWorldType::Editor);
+	if (mDecals.IsEmpty()) {
+		return;
+	}
+
+	FRenderingInfo PassInfo{ SceneInfo };
+	for (FRenderingDesc& Color : PassInfo.ColorRenderTargets) {
+		Color.LoadOp = ERenderTargetLoadOp::Load;
+	}
+	PassInfo.DepthStencil.Texture = nullptr;
+	RenderCommand::BeginRenderPass(PassInfo);
+	mDecalRenderer->OnRender(SceneInfo.DepthStencil.Texture, SceneView, SceneInfo.ViewportSetting, mDecals);
+	RenderCommand::EndRenderPass();
+}
+
+void FSceneRenderer::RenderTranslucentPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FRenderingInfo& SceneInfo) {
+	if (!Settings.bDrawPrimitives) {
+		return;
+	}
+
+	FRenderingInfo PassInfo{ SceneInfo };
+	for (FRenderingDesc& Color : PassInfo.ColorRenderTargets) {
+		Color.LoadOp = ERenderTargetLoadOp::Load;
+	}
+	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
+	RenderCommand::BeginRenderPass(PassInfo);
+	DrawWorldText(SceneView, ViewWorld);
+	RenderCommand::SetRasterizerState(SceneView.RenderMode.ViewMode == EViewMode::Wireframe ? ERasterizerState::Wireframe : ERasterizerState::SolidBack);
+	RenderCommand::SetBlendState(EBlendState::Opaque);
+	RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
+	Renderer->RenderTranslucent(SceneView.ViewProjection);
+	RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 	RenderCommand::EndRenderPass();
 }
 

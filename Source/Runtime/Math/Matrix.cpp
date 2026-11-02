@@ -65,6 +65,64 @@ FMatrix FMatrix::Inverse() const
 	return FMatrixRegister::Load(*this).Inverse().ToFMatrix();
 }
 
+bool FMatrix::TryInverse(FMatrix& OutInverse) const {
+	double Augmented[4][8]{};
+	for (int32 Row{ 0 }; Row < 4; ++Row) {
+		for (int32 Column{ 0 }; Column < 4; ++Column) {
+			if (!std::isfinite(M[Row][Column])) {
+				return false;
+			}
+			Augmented[Row][Column] = M[Row][Column];
+		}
+		Augmented[Row][Row + 4] = 1.0;
+	}
+
+	for (int32 Column{ 0 }; Column < 4; ++Column) {
+		int32 PivotRow{ Column };
+		for (int32 Row{ Column + 1 }; Row < 4; ++Row) {
+			if (std::abs(Augmented[Row][Column]) > std::abs(Augmented[PivotRow][Column])) {
+				PivotRow = Row;
+			}
+		}
+		if (Augmented[PivotRow][Column] == 0.0) {
+			return false;
+		}
+
+		for (int32 Entry{ 0 }; Entry < 8; ++Entry) {
+			std::swap(Augmented[Column][Entry], Augmented[PivotRow][Entry]);
+		}
+		const double Pivot{ Augmented[Column][Column] };
+		for (int32 Entry{ 0 }; Entry < 8; ++Entry) {
+			Augmented[Column][Entry] /= Pivot;
+		}
+
+		for (int32 Row{ 0 }; Row < 4; ++Row) {
+			if (Row == Column) {
+				continue;
+			}
+			const double Factor{ Augmented[Row][Column] };
+			for (int32 Entry{ 0 }; Entry < 8; ++Entry) {
+				Augmented[Row][Entry] -= Factor * Augmented[Column][Entry];
+				if (!std::isfinite(Augmented[Row][Entry])) {
+					return false;
+				}
+			}
+		}
+	}
+
+	FMatrix Result{};
+	for (int32 Row{ 0 }; Row < 4; ++Row) {
+		for (int32 Column{ 0 }; Column < 4; ++Column) {
+			Result[Row][Column] = static_cast<float>(Augmented[Row][Column + 4]);
+			if (!std::isfinite(Result[Row][Column])) {
+				return false;
+			}
+		}
+	}
+	OutInverse = Result;
+	return true;
+}
+
 FVector4 FMatrix::InverseTransformPosition(const FVector& V) const
 {
 	FMatrix InvMatrix = Inverse();

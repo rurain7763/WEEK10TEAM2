@@ -122,7 +122,11 @@ void FScene::BuildDecalRenderData(TArray<FDecalRenderData>& OutDecals, bool Game
 		ProjectionMatrix[0][0] = 1.0f / Decal.mDecalSize.X;
 		ProjectionMatrix[1][1] = 1.0f / Decal.mDecalSize.Y;
 		ProjectionMatrix[2][2] = 1.0f / Decal.mDecalSize.Z;
-		Decal.mWorldToDecalMatrix = Decal.mWorldMatrix.Inverse() * ProjectionMatrix;
+		FMatrix WorldToLocal{};
+		if (!Decal.mWorldMatrix.TryInverse(WorldToLocal)) {
+			continue;
+		}
+		Decal.mWorldToDecalMatrix = WorldToLocal * ProjectionMatrix;
 
 		Decal.mDecalMaterial = Component->GetDecalMaterial();
 		Decal.mDecalColor = Component->GetDecalColor();

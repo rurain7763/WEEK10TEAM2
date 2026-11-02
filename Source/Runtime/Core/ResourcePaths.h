@@ -22,4 +22,5 @@ namespace ResourcePaths
 
 	constexpr const char* CameraIcon = "Resources/Icons/S_SceneCaptureIcon.png";
 	constexpr const char* PlayerStartIcon = "Resources/Icons/S_Player.png";
+	constexpr const char* DecalActorIcon{ "Resources/Icons/S_DecalActorIcon.png" };
 }
