@@ -24,6 +24,4 @@ private:
 	const FGizmo* Gizmo = nullptr;
 
 
-
-
 };

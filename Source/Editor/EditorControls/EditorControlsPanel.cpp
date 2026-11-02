@@ -1,7 +1,7 @@
 #include "EnginePCH.h"
 
 #include "Editor/EditorControls/EditorControlsPanel.h"
-#include "Editor/LevelEditor/MultipleViewports/Adapter/MultipleViewportsAdapter.h"
+#include "Editor/Viewports/ViewportsPanel.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/PlayerController.h"
 
@@ -178,33 +178,33 @@ void FEditorControlsPanel::DrawCameraProperties()
 	ImGui::SeparatorText("Viewport");
 
 	UCameraComponent* CamCom = FindPlayerViewCamera(World);
-	if (!ViewportAdapter && !CamCom) return;
+	if (!ViewportsPanel && !CamCom) return;
 
 	int32 CameraViewIndex = 0;
 	FViewCamera Camera{};
 
-	if (ViewportAdapter)
+	if (ViewportsPanel)
 	{
 		const char* ViewNames[] = { "View 0", "View 1", "View 2", "View 3" };
-		CameraViewIndex = ViewportAdapter->GetEditorViewIndex();
+		CameraViewIndex = ViewportsPanel->GetEditorViewIndex();
 
-		const bool bSingle = ViewportAdapter->GetLayoutMode() == ELayoutMode::Single;
-		if (bSingle) CameraViewIndex = ViewportAdapter->GetSingleViewIndex();
+		const bool bSingle = ViewportsPanel->GetLayoutMode() == ELayoutMode::Single;
+		if (bSingle) CameraViewIndex = ViewportsPanel->GetSingleViewIndex();
 
 		ImGui::SetNextItemWidth(-1.0f);
 		ImGui::BeginDisabled(bSingle);
 
 		if (ImGui::Combo("##CameraView", &CameraViewIndex, ViewNames, 4))
 		{
-			ViewportAdapter->SetEditorViewIndex(CameraViewIndex);
+			ViewportsPanel->SetEditorViewIndex(CameraViewIndex);
 		}
 		ImGui::EndDisabled();
 
-		Camera = ViewportAdapter->GetViewCamera(CameraViewIndex);
+		Camera = ViewportsPanel->GetEditorClient(CameraViewIndex).GetCamera();
 	}
 
 	bool bChanged = false;
-	bool bOrthogonal = ViewportAdapter ? Camera.Projection.Mode == EProjectionMode::Orthographic : CamCom->GetIsOrthogonal();
+	bool bOrthogonal = ViewportsPanel ? Camera.Projection.Mode == EProjectionMode::Orthographic : CamCom->GetIsOrthogonal();
 
 	ImGui::Dummy(ImVec2(0.0f, SubsectionGap));
 	ImGui::TextDisabled("Projection");
@@ -225,12 +225,12 @@ void FEditorControlsPanel::DrawCameraProperties()
 
 		if (bOrthogonal)
 		{
-			float OrthoWidth = ViewportAdapter ? Camera.Projection.OrthoWidth : CamCom->GetOrthoWidth();
+			float OrthoWidth = ViewportsPanel ? Camera.Projection.OrthoWidth : CamCom->GetOrthoWidth();
 			if (ImGui::DragFloat("##OrthoWidth", &OrthoWidth, 0.1f) && std::isfinite(OrthoWidth))
 			{
 				OrthoWidth = FMath::Clamp(OrthoWidth, 0.01f, 1000000.0f);
 
-				if (ViewportAdapter)
+				if (ViewportsPanel)
 				{
 					Camera.Projection.OrthoWidth = OrthoWidth;
 					bChanged = true;
@@ -243,12 +243,12 @@ void FEditorControlsPanel::DrawCameraProperties()
 		}
 		else
 		{
-			float FOV = ViewportAdapter ? Camera.Projection.FovDegrees : CamCom->GetFieldOfView();
+			float FOV = ViewportsPanel ? Camera.Projection.FovDegrees : CamCom->GetFieldOfView();
 			if (ImGui::DragFloat("##FOV", &FOV, 0.1f) && std::isfinite(FOV))
 			{
 				FOV = FMath::Clamp(FOV, 1.0f, 179.0f);
 
-				if (ViewportAdapter)
+				if (ViewportsPanel)
 				{
 					Camera.Projection.FovDegrees = FOV;
 					bChanged = true;
@@ -268,7 +268,7 @@ void FEditorControlsPanel::DrawCameraProperties()
 
 		ImGui::TableSetColumnIndex(1);
 		float Width = ImGui::GetContentRegionAvail().x;
-		float Near = ViewportAdapter ? Camera.Projection.NearClip : CamCom->GetNearZ();
+		float Near = ViewportsPanel ? Camera.Projection.NearClip : CamCom->GetNearZ();
 
 		ImGui::SetNextItemWidth(-1.0f);
 		bool Changed = ImGui::InputFloat("##Near", &Near);
@@ -279,13 +279,13 @@ void FEditorControlsPanel::DrawCameraProperties()
 		ImGui::Text("Far");
 
 		ImGui::TableSetColumnIndex(1);
-		float Far = ViewportAdapter ? Camera.Projection.FarClip : CamCom->GetFarZ();
+		float Far = ViewportsPanel ? Camera.Projection.FarClip : CamCom->GetFarZ();
 		ImGui::SetNextItemWidth(-1.0f);
 		Changed |= ImGui::InputFloat("##Far", &Far);
 
 		if (Changed && std::isfinite(Near) && std::isfinite(Far) && Near > 0 && Far > Near)
 		{
-			if (ViewportAdapter)
+			if (ViewportsPanel)
 			{
 				Camera.Projection.NearClip = Near;
 				Camera.Projection.FarClip = Far;
@@ -322,7 +322,7 @@ void FEditorControlsPanel::DrawCameraProperties()
 		float Available = ImGui::GetContentRegionAvail().x;
 		float ItemWidth = (Available - ImGui::GetStyle().ItemSpacing.x * 2.0f) / 3.0f;
 
-		FVector Location = ViewportAdapter ?
+		FVector Location = ViewportsPanel ?
 			FVector(Camera.Transform.Location.X, Camera.Transform.Location.Y, Camera.Transform.Location.Z) :
 			CamCom->GetRelativeLocation();
 
@@ -341,7 +341,7 @@ void FEditorControlsPanel::DrawCameraProperties()
 
 		if (bLocationChanged && std::isfinite(Location.X) && std::isfinite(Location.Y) && std::isfinite(Location.Z))
 		{
-			if (ViewportAdapter)
+			if (ViewportsPanel)
 			{
 				Camera.Transform.Location = { Location.X, Location.Y, Location.Z };
 				bChanged = true;
@@ -356,7 +356,7 @@ void FEditorControlsPanel::DrawCameraProperties()
 		ImGui::Text("Rotation");
 
 		ImGui::TableSetColumnIndex(1);
-		FRotator Rotation = ViewportAdapter ?
+		FRotator Rotation = ViewportsPanel ?
 			FQuat(Camera.Transform.Rotation.X, Camera.Transform.Rotation.Y, Camera.Transform.Rotation.Z, Camera.Transform.Rotation.W).ToFRotator() :
 			CamCom->GetRelativeRotation();
 
@@ -377,7 +377,7 @@ void FEditorControlsPanel::DrawCameraProperties()
 
 		if (bRotationChanged && std::isfinite(Rotation.Pitch) && std::isfinite(Rotation.Yaw) && std::isfinite(Rotation.Roll))
 		{
-			if (ViewportAdapter)
+			if (ViewportsPanel)
 			{
 				if (!bOrthogonal)
 				{
@@ -392,8 +392,8 @@ void FEditorControlsPanel::DrawCameraProperties()
 		}
 		ImGui::EndTable();
 	}
-	if (ViewportAdapter && bChanged)
+	if (ViewportsPanel && bChanged)
 	{
-		ViewportAdapter->ApplyCameraProperties(CameraViewIndex, Camera, bRotationChanged);
+		ViewportsPanel->GetEditorClient(CameraViewIndex).ApplyCameraProperties(Camera, bRotationChanged, ViewportsPanel->GetViewRect(CameraViewIndex));
 	}
 }

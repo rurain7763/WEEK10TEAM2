@@ -6,7 +6,7 @@
 #include "Math/Vector.h"
 #include "Render/ViewMode.h"
 #include "Render/ShadowFilterSettings.h"
-class FMultipleViewportsAdapter;
+class FViewportsPanel;
 
 class UWorld;
 
@@ -94,7 +94,7 @@ public:
 	// editor.ini의 기존 렌더·에디터·Multiple Viewports 값을 같은 설정 객체로 복원한다.
 	bool LoadSettings();
     // 초기화된 Adapter에 저장 설정을 적용한다.
-    void SetViewportAdapter(FMultipleViewportsAdapter* Value);
+    void SetViewportsPanel(FViewportsPanel* Value);
     // 종료 저장은 마지막 프레임의 복사본을 사용해 Adapter 수명과 분리한다.
     void CaptureViewportSettings();
 
@@ -105,7 +105,7 @@ private:
     // View별 Transform·투영·표시 설정을 읽어 저장용 스냅샷에 반영한다.
     void ReadViewportSettings(FEditorSettings& Out) const;
     void ApplyViewportSettings();
-    FMultipleViewportsAdapter* ViewportAdapter = nullptr;
+    FViewportsPanel* ViewportsPanel = nullptr;
 	UWorld* World;
 	FEditorSettings Settings;
 };

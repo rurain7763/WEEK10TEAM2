@@ -57,9 +57,13 @@ public:
 
 	// 탭 바의 닫기 버튼이 내린다
 	bool* GetOpenFlag() { return CanClose() ? &bOpen : nullptr; }
-
+	bool IsOpen() const { return bOpen; }
 	//열라는 요청이 들어왔는지 확인하고, 요청이 있으면 false로 바꾸고 true를 반환한다.
 	bool ConsumeFocusRequest() { const bool bRequested = bFocusRequested; bFocusRequested = false; return bRequested; }
+	void RequestFocus() { bFocusRequested = true; }
+	// 같은 에셋을 두 번 열면 새 탭 대신 기존 탭을 띄우는 데 쓴다
+	virtual const UObject* GetEditingAsset() const { return nullptr; }
+	virtual UWorld* GetWorld() const { return nullptr; }
 protected:
 	// imgui.ini에 이 탭의 배치가 없을 때 한 번 부른다. 기본은 모든 패널을 한 노드에 겹친다
 	// DockBuilder로 DockSpaceRoot를 나누고 패널 창 이름으로 배치한다

@@ -23,7 +23,7 @@
 #include "Editor/Details/DetailsPanel.h"
 #include "Editor/Settings/SettingsPanel.h"
 #include "Editor/Viewports/ViewportsPanel.h"
-#include "Editor/LevelEditor/MultipleViewports/Adapter/MultipleViewportsAdapter.h"
+#include "Editor/Rendering/ViewportRenderCollector.h"
 #include "Editor/ContentDrawer/ContentDrawerPanel.h"
 #include "Editor/Sequencer/Sequencer.h"
 
@@ -85,13 +85,13 @@ public:
 private:
 	// 이번 프레임 DeltaTime을 패널에 전달하고 에디터 단축키를 처리한다.
 	void BeginFrame(float DeltaTime);
-	// 패널 요청과 입력을 Core Adapter에 전달해 레이아웃·카메라 상태를 갱신한다.
+	// 패널 요청과 입력을 ViewportsPanel에 전달해 레이아웃·카메라 상태를 갱신한다.
 	void UpdateMultipleViewportState(float DeltaTime);
 	// 월드를 정확히 한 번 Tick·Capture한 뒤 에디터 상호작용을 갱신한다.
 	void TickWorldAndEditor(float DeltaTime);
 	// 한 번 캡처한 월드 결과를 재사용해 현재 레이아웃의 각 View를 렌더한다.
 	void RenderMultipleViewports();
-	// PIE View가 PlayWorld 메인 카메라로 보이도록 Adapter Override를 갱신하고 게임 카메라 입력을 켜고 끈다.
+	// PIE View가 PlayWorld 메인 카메라로 보이도록 Game Client 카메라를 갱신하고 게임 카메라 입력을 켜고 끈다.
 	void UpdatePIEViewCamera();
 
 	// 별도 PIE 창(New Editor Window)을 만들고 정리한다.
@@ -106,15 +106,22 @@ private:
 	FTexture2D* GetFxaaTargetForView(int32 ViewIndex) const;
 	// 화면 합성과 View 설정 보관으로 프레임을 마무리한다.
 	void EndFrame();
-
+	void UpdateEditorTabs();
 	FSceneView MakeSceneView(int32 ViewIndex) const;
 	FSceneRenderSettings MakeSceneRenderSettings() const;
+
+	void OpenSkeletalMeshViewer(USkeletalMesh* SkeletalMesh);
 
 	//Overlay Pass
 	void RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, const FSceneRenderTargets& Targets, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue);
 
 	FWorldContext* GetPIEWorldContext(int32 WorldPIEInstance = 0);
 	UWorld* GetActiveWorld() const { return PlayWorld ? PlayWorld : EditorWorld; }
+	// 0~3은 패널 View, PIEWindowViewIndex는 별도 PIE 창 View의 Viewport다.
+	FViewport& GetViewportForView(int32 ViewIndex);
+	const FViewport& GetViewportForView(int32 ViewIndex) const;
+	// 패널 View는 레이아웃으로, PIE 창 View는 크기와 Game Client로 활성 여부를 정한다.
+	bool IsViewActive(int32 ViewIndex) const;
 	// PIE를 시작한 View만 PlayWorld를, 나머지 View는 EditorWorld를 그린다.
 	UWorld* GetWorldForView(int32 ViewIndex) const { return PlayWorld && ViewIndex == PIEViewIndex ? PlayWorld : EditorWorld; }
 	// PIE 중이고 일시정지가 아닌 View는 Gizmo·Picking 등 에디터 상호작용을 하지 않는다.
@@ -146,15 +153,22 @@ private:
 	FDetailsPanel* DetailsPanel = nullptr;
 	FSettingsPanel* SettingsPanel = nullptr;
 	FViewportsPanel* ViewportsPanel = nullptr;
-	FMultipleViewportsAdapter MultipleViewportsAdapter;
+	// View마다 캡처한 월드에서 렌더 큐를 만든다.
+	FViewportRenderCollector RenderCollector;
+	// 별도 PIE 창이 그리는 View. 레이아웃·입력·피킹에는 참여하지 않고, PIE 중 Game Client만 붙는다.
+	static constexpr int32 PIEWindowViewIndex = FViewportsPanel::ViewCount;
+	FViewport PIEWindowViewport;
 	FRenderQueue RenderQueue;
 	FOutlinerPanel* OutlinerPanel = nullptr;
 	FContentDrawerPanel* ContentDrawerPanel = nullptr;
 	FLevelSequencePanel* LevelSequencerPanel = nullptr;
 
+	//Detail 패널에서 Open Preview를 요청받은 SkeletalMesh
+	USkeletalMesh* PendingPreviewMesh = nullptr;
+
 	UWorld* EditorWorld = nullptr;
 	UWorld* PlayWorld = nullptr;
-	// PIE 시작 시점의 편집 View. 별도 창이면 Adapter의 ExternalViewIndex다. PIE가 아니면 InvalidViewIndex다.
+	// PIE 시작 시점의 편집 View. 별도 창이면 PIEWindowViewIndex다. PIE가 아니면 InvalidViewIndex다.
 	int32 PIEViewIndex = InvalidViewIndex;
 
 	// Play 버튼이 다음 세션을 띄울 위치

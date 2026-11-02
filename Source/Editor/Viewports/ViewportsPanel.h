@@ -1,17 +1,20 @@
 #pragma once
 
 #include "Editor/EditorUI/EditorPanel.h"
-#include "Editor/LevelEditor/MultipleViewports/Adapter/MultipleViewportsAdapterTypes.h"
+#include "Editor/Viewports/ViewportTypes.h"
+#include "Editor/Viewports/Viewport.h"
 #include "Render/SceneRenderTargets.h"
 #include "Render/Texture2D.h"
-class FMultipleViewportsAdapter;
 class FGizmo;
 
+// 네 편집 View를 담는 패널. View마다 FViewport를 소유하고, 배치·View 선택·우클릭 Capture를 맡는다.
+// 카메라는 각 Viewport의 Client가, 렌더 큐는 FViewportRenderCollector가 맡는다.
 class FViewportsPanel : public IEditorPanel
 {
 public:
-	// View 표시 모드를 편집할 Adapter를 연결한다. 엔진이 수명을 보장한다.
-	void SetViewportAdapter(FMultipleViewportsAdapter* Value) { ViewportAdapter = Value; }
+	static constexpr int32 ViewCount = 4;
+
+	FViewportsPanel();
 	// 상단 World/Local 버튼이 바꿀 기즈모를 연결한다. 없으면 버튼을 그리지 않는다.
 	void SetGizmo(FGizmo* Value) { Gizmo = Value; }
 	// 네 View의 렌더 타깃과 UI 제어 상태를 초기화한다.
@@ -22,8 +25,47 @@ public:
 	void OnRender() override;
 	const char* GetPanelName() const override { return "Viewports"; }
 
+	// View 하나의 Viewport와 그 편집 Client.
+	FViewport& GetViewport(int32 ViewIndex);
+	const FViewport& GetViewport(int32 ViewIndex) const;
+	FEditorViewportClient& GetEditorClient(int32 ViewIndex) const;
+
+	// 네 View의 초기 카메라와 프리셋을 구성한다.
+	void InitializeDefaultViews();
+	// 현재 Single·Quad 레이아웃 모드를 설정한다.
+	void SetLayoutMode(ELayoutMode Mode) { LayoutMode = Mode; }
+	ELayoutMode GetLayoutMode() const { return LayoutMode; }
+	// Single 레이아웃에서 전체 화면으로 표시할 View 인덱스를 설정한다.
+	void SetSingleViewIndex(int32 ViewIndex);
+	int32 GetSingleViewIndex() const { return SingleViewIndex; }
+	// 외부에서 읽은 Split 비율을 Core 허용 범위로 제한해 저장한다.
+	void SetSplitRatio(const FSplitRatio& Value);
+	const FSplitRatio& GetSplitRatio() const { return SplitRatio; }
+
+	// 레이아웃 Rect를 계산하고 활성 View를 갱신한다.
+	void UpdateLayout(FVector2 WindowSize, FVector2 LocalMousePosition);
+	// Splitter Drag 픽셀을 Core 비율 계산에 전달해 레이아웃 상태를 갱신한다.
+	void ApplySplitterDrag(EDragAxis Axis, float DeltaPixels, FVector2 WindowSize);
+	// 우클릭 Capture와 활성 View를 갱신하고, 활성 View의 Client에 카메라 입력을 넘긴다.
+	// Capture 중 휠은 줌 대신 InOutMoveSpeed를 바꾼다.
+	void UpdateInput(float DeltaTime, FVector2 LocalMousePosition, float& InOutMoveSpeed, float MouseSensitivity);
+
+	// 레이아웃과 Rect 상태를 기준으로 지정 View의 활성 여부를 반환한다.
+	bool IsViewActive(int32 ViewIndex) const;
+	// 현재 입력을 소비할 활성 View 인덱스를 반환한다.
+	int32 GetActiveViewIndex() const { return ActiveViewIndex; }
+	// 입력 영역 밖에서도 마지막 편집 대상을 유지하며 Single에서는 확대 View를 반환한다.
+	int32 GetEditorViewIndex() const { return LayoutMode == ELayoutMode::Single ? SingleViewIndex : EditorViewIndex; }
+	// 속성 창에서 선택한 View를 공통 편집 대상으로 지정한다.
+	void SetEditorViewIndex(int32 Index) { if (Index >= 0 && Index < ViewCount) EditorViewIndex = Index; }
+	// 우클릭 입력을 Capture 중인 View 인덱스를 반환한다.
+	int32 GetCapturedViewIndex() const { return InputState.CapturedViewIndex; }
+	// 지정 View의 패널 로컬 화면 Rect를 반환한다.
+	const FRect& GetViewRect(int32 ViewIndex) const;
+	// 활성 View의 패널 로컬 마우스 좌표를 역투영해 Ray로 반환한다. 마우스가 다른 View 위면 false다.
+	bool TryGetActiveViewRay(FVector2 LocalMousePosition, FRay& OutRay) const;
 	// Core가 계산한 View Rect에 맞춰 해당 Slot의 활성 상태와 렌더 타깃을 갱신한다.
-	void SetView(int32 ViewIndex, const FRect& Rect, bool bActive);
+	void SetView(int32 ViewIndex, bool bActive);
 	// View별 텍스처 묶음. 출력 연결과 Clear/Load는 각 패스에서 구성한다.
 	const FSceneRenderTargets& GetRenderTargets(int32 ViewIndex) const;
 	// FXAA 결과를 임시로 받는 View별 텍스처. ColorTarget과 크기·포맷이 같다.
@@ -35,8 +77,6 @@ public:
 
 	float ConsumeHorizontalDrag();
 	float ConsumeVerticalDrag();
-	// Core의 현재 Layout과 View별 Preset을 UI 표시 상태에 동기화한다.
-	void SetControlState(ELayoutMode LayoutMode, int32 SingleViewIndex, const EMultipleViewportsCameraPreset CameraPresets[4]);
 	// UI에서 발생한 Layout 변경 요청을 한 번 소비하도록 반환한다.
 	bool ConsumeLayoutRequest(ELayoutMode& OutMode, int32& OutSingleViewIndex);
 	// UI에서 발생한 View별 Camera Preset 요청을 한 번 소비하도록 반환한다.
@@ -45,28 +85,42 @@ public:
 	void ShowCameraSpeed(int32 ViewIndex, float Speed);
 
 private:
-	FMultipleViewportsAdapter* ViewportAdapter = nullptr;
 	FGizmo* Gizmo = nullptr;
 	struct FViewSlot
 	{
-		// View 하나의 Rect·활성 상태·Color/Depth 타깃과 렌더 정보를 담는다.
-		FRect Rect{};
+		// View 하나의 Viewport·활성 상태·Color/Depth 타깃과 렌더 정보를 담는다.
+		FViewport Viewport;
 		bool bActive = false;
 		FSceneRenderTargets RenderTargets;
 	};
 
 	// Rect 크기가 바뀐 Slot의 Color/Depth Texture와 렌더 정보를 다시 만든다.
 	void ResizeSlot(FViewSlot& Slot, uint32 Width, uint32 Height);
+	// ViewRects를 바꾼 뒤 각 Viewport에 같은 Rect를 넣는다.
+	void SyncViewportRects();
 	// 콘솔 stat 명령으로 켜진 항목을 해당 View의 좌상단에 겹쳐 그린다.
 	void DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMin) const;
 	// ShowCameraSpeed로 요청된 속도 표시가 아직 유효하면 그린다.
 	void DrawCameraSpeedNotice(ImDrawList* DrawList) const;
 	// View 오른쪽 위 카메라 메뉴. 프리셋 선택과 FOV·Near·Far·Transform 편집을 한 드롭다운에 담는다.
 	void DrawCameraMenu(int32 ViewIndex, const ImVec2& ViewTopRight);
-	// 카메라 메뉴 안의 투영·Transform 편집 칸. 바뀐 값만 Adapter에 반영한다.
+	// 카메라 메뉴 안의 투영·Transform 편집 칸. 바뀐 값만 편집 Client에 반영한다.
 	void DrawCameraProperties(int32 ViewIndex);
 
-	FViewSlot Slots[4]{};
+	FViewSlot Slots[ViewCount]{};
+
+	// 레이아웃·View 선택 상태
+	static constexpr float MinimumSplitRatio = 0.1f;
+	// 예전 FViewSet{}의 값 초기화와 같이 Single로 시작하고, InitializeDefaultViews가 Quad로 바꾼다.
+	ELayoutMode LayoutMode = ELayoutMode::Single;
+	FSplitRatio SplitRatio{};
+	FViewInputState InputState{};
+	// Core 함수가 읽고 쓰는 네 View의 패널 로컬 Rect. Viewport에도 같은 값을 넣는다.
+	FRect ViewRects[ViewCount]{};
+	int32 SingleViewIndex = 0;
+	int32 ActiveViewIndex = InvalidViewIndex;
+	int32 EditorViewIndex = 0;
+
 	ImVec2 ContentOrigin{};
 	ImVec2 ContentSize{1.0f, 1.0f};
 	bool bHovered = false;
@@ -84,9 +138,6 @@ private:
 	// 누른 뒤 커서가 Splitter 영역을 벗어나도 버튼을 놓을 때까지 드래그를 유지한다.
 	bool bDraggingVerticalSplitter = false;
 	bool bDraggingHorizontalSplitter = false;
-	ELayoutMode CurrentLayoutMode = ELayoutMode::QuadSplit;
-	int32 CurrentSingleViewIndex = 0;
-	EMultipleViewportsCameraPreset CurrentCameraPresets[4]{};
 	bool bHasLayoutRequest = false;
 	ELayoutMode RequestedLayoutMode = ELayoutMode::QuadSplit;
 	int32 RequestedSingleViewIndex = 0;
