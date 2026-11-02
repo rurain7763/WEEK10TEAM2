@@ -33,6 +33,10 @@
 
 #include "Core/EngineLog.h"
 #include "Core/Stats/LightweightStats.h"
+#include "Core/Stats/EditorStats.h"
+#include "Collision/HitResult.h"
+#include "Component/BillboardComponent.h"
+#include "Component/PrimitiveComponent.h"
 
 #include "Engine/LightSceneProxy.h"
 #include "GameFramework/Pawn.h"
@@ -40,6 +44,7 @@
 
 #include "Component/ShapeComponent.h"
 #include "Engine/GameViewportClient.h"
+#include "Editor/SkeletalMeshPreviewTab.h"
 
 namespace
 {
@@ -49,6 +54,17 @@ namespace
 	DECLARE_CYCLE_STAT("Capture World", STAT_CaptureWorld);
 	DECLARE_CYCLE_STAT("Build Render Queue", STAT_BuildRenderQueue);
 	DECLARE_CYCLE_STAT("ImGui", STAT_ImGui);
+
+	// 렌더 캡처 목록에 없는 컴포넌트도 Hit ID로 찾아 Owner를 반환한다.
+	AActor* FindActorByPrimitiveId(const uint32 PrimitiveId)
+	{
+		for (TObjectIterator<UPrimitiveComponent> It; It; ++It)
+		{
+			if (It->GetUUID() == PrimitiveId)
+				return It->GetOwner();
+		}
+		return nullptr;
+	}
 }
 
 #include "Core/SplashScreen.h"
@@ -94,7 +110,7 @@ bool UEditorEngine::Init()
 	EditorUI->SetSaveSceneCallback([this]() { SaveCurrentScene(); });
 	EditorUI->SetSaveSceneAsCallback([this]() { SaveSceneAs(); });
 
-	OutputLogPanel = EditorUI->AddEditorPanel<FOutputLogPanel>();
+	OutputLogPanel = EditorUI->GetLevelTab()->AddPanel<FOutputLogPanel>();
 	FLog::AddSink(OutputLogPanel);
 	HTR_LOG(Info, "Editor Initialize...");
 
@@ -115,14 +131,17 @@ bool UEditorEngine::Init()
 	Gizmo = MakeUnique<FGizmo>();
 
 	// 필요한 Panel들 추가후 raw pointer 반환(소유권 = EditorUI)
-	DetailsPanel = EditorUI->AddEditorPanel<FDetailsPanel>();
-	ViewportsPanel = EditorUI->AddEditorPanel<FViewportsPanel>();
-	ContentDrawerPanel = EditorUI->AddEditorPanel<FContentDrawerPanel>();
-	LevelSequencerPanel = EditorUI->AddEditorPanel<FLevelSequencePanel>();
+	DetailsPanel = EditorUI->GetLevelTab()->AddPanel<FDetailsPanel>();
+	ViewportsPanel = EditorUI->GetLevelTab()->AddPanel<FViewportsPanel>();
+	ContentDrawerPanel = EditorUI->GetLevelTab()->AddPanel<FContentDrawerPanel>();
+	LevelSequencerPanel = EditorUI->GetLevelTab()->AddPanel<FLevelSequencePanel>();
 	ContentDrawerPanel->SetOpenLevelSequenceBinding([this](const FString& Path)
 	{
 		LevelSequencerPanel->OpenSequenceFile(Path);
 	});
+
+	EditorUI->GetLevelTab()->SetGizmo(Gizmo.get());
+	EditorUI->GetLevelTab()->SetViewportsPanel(ViewportsPanel);
 
 	SceneRenderer.Init(Renderer);
 
@@ -130,7 +149,7 @@ bool UEditorEngine::Init()
 	OutlineRenderer = MakeUnique<FOutlineRenderer>();
 	OutlineRenderer->Init(Renderer);
 
-	SettingsPanel = EditorUI->AddEditorPanel<FSettingsPanel>();
+	SettingsPanel = EditorUI->GetLevelTab()->AddPanel<FSettingsPanel>();
 
 	//ToolbarPanel->SetPlayCallback([this]() { RequestPlaySession(); });
 	//ToolbarPanel->SetStopCallback([this]() { RequestEndPlayMap(); });
@@ -144,16 +163,16 @@ bool UEditorEngine::Init()
 	TextRenderer->Init();
 
 	// 투영 행렬 생성 
-	MultipleViewportsAdapter.InitializeDefaultViews();
+	ViewportsPanel->InitializeDefaultViews();
 	// 화면 나눔 비율 설정 가져오기
-	MultipleViewportsAdapter.SetSplitRatio({
+	ViewportsPanel->SetSplitRatio({
 		SettingsPanel->GetSettings().MultipleViewportsHorizontal,
 		SettingsPanel->GetSettings().MultipleViewportsVertical });
 	// SingleView에 사용할 인덱스 설정
-	MultipleViewportsAdapter.SetSingleViewIndex(
+	ViewportsPanel->SetSingleViewIndex(
 		SettingsPanel->GetSettings().MultipleViewportsSingleViewIndex);
 	// 뷰포트 레이아웃 설정
-	MultipleViewportsAdapter.SetLayoutMode(
+	ViewportsPanel->SetLayoutMode(
 		SettingsPanel->GetSettings().bMultipleViewportsSingle
 		? ELayoutMode::Single
 		: ELayoutMode::QuadSplit);
@@ -162,7 +181,7 @@ bool UEditorEngine::Init()
 	//SceneManager = EditorUI->AddEditorPanel<FSceneManager>();
 	//SceneManager->SetWorld(World);
 
-	OutlinerPanel = EditorUI->AddEditorPanel<FOutlinerPanel>();
+	OutlinerPanel = EditorUI->GetLevelTab()->AddPanel<FOutlinerPanel>();
 	OutlinerPanel->SetWorld(GetActiveWorld());
 	// 아웃라이너·뷰포트 피킹이 같은 선택 목록을 쓰고, 바뀌면 한곳에서 기즈모·디테일·외곽선을 맞춘다.
 	OutlinerPanel->SetSelection(&Selection);
@@ -212,8 +231,7 @@ bool UEditorEngine::Init()
 	DetailsPanel->SetWorld(GetActiveWorld());
 
 	SettingsPanel->SetWorld(GetActiveWorld());
-	SettingsPanel->SetViewportAdapter(&MultipleViewportsAdapter);
-	ViewportsPanel->SetViewportAdapter(&MultipleViewportsAdapter);
+	SettingsPanel->SetViewportsPanel(ViewportsPanel);
 	ViewportsPanel->SetGizmo(Gizmo.get());
 
 	const ImVec4 White = { 1, 1, 1, 1 };
@@ -351,7 +369,7 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 	EditorCommandUI::ProcessShortcuts({ &Save, &Copy, &Paste, &Duplicate, &FocusSelection, &CycleGizmoMode });
 }
 
-// 패널의 Layout·Preset 요청과 입력을 Adapter에 반영한다.
+// 패널의 Layout·Preset 요청과 입력을 패널 상태에 반영한다.
 void UEditorEngine::UpdateMultipleViewportState(const float DeltaTime)
 {
 	SCOPE_CYCLE_COUNTER(STAT_ViewportUpdate);
@@ -360,12 +378,12 @@ void UEditorEngine::UpdateMultipleViewportState(const float DeltaTime)
 	const FVector2 LocalMousePosition = ViewportsPanel->GetLocalMousePosition();
 
 	ELayoutMode RequestedLayout{};
-	int32 RequestedSingleViewIndex = MultipleViewportsAdapter.GetSingleViewIndex();
+	int32 RequestedSingleViewIndex = ViewportsPanel->GetSingleViewIndex();
 	if (ViewportsPanel->ConsumeLayoutRequest(RequestedLayout, RequestedSingleViewIndex))
 	{
 		if (RequestedLayout == ELayoutMode::Single)
-			MultipleViewportsAdapter.SetSingleViewIndex(RequestedSingleViewIndex);
-		MultipleViewportsAdapter.SetLayoutMode(RequestedLayout);
+			ViewportsPanel->SetSingleViewIndex(RequestedSingleViewIndex);
+		ViewportsPanel->SetLayoutMode(RequestedLayout);
 
 		FEditorSettings& Settings = SettingsPanel->GetMutableSettings();
 		Settings.bMultipleViewportsSingle = RequestedLayout == ELayoutMode::Single;
@@ -375,19 +393,19 @@ void UEditorEngine::UpdateMultipleViewportState(const float DeltaTime)
 	int32 PresetViewIndex = InvalidViewIndex;
 	EMultipleViewportsCameraPreset RequestedPreset = EMultipleViewportsCameraPreset::Perspective;
 	if (ViewportsPanel->ConsumeCameraPresetRequest(PresetViewIndex, RequestedPreset))
-		MultipleViewportsAdapter.ApplyCameraPreset(PresetViewIndex, RequestedPreset);
-	MultipleViewportsAdapter.UpdateLayout(ViewportSize, LocalMousePosition);
+		ViewportsPanel->GetEditorClient(PresetViewIndex).ApplyCameraPreset(RequestedPreset, ViewportsPanel->GetViewRect(PresetViewIndex));
+	ViewportsPanel->UpdateLayout(ViewportSize, LocalMousePosition);
 
 	const float HorizontalDrag = ViewportsPanel->ConsumeHorizontalDrag();
 	const float VerticalDrag = ViewportsPanel->ConsumeVerticalDrag();
 	if (HorizontalDrag != 0.0f)
-		MultipleViewportsAdapter.ApplySplitterDrag(EDragAxis::Horizontal, HorizontalDrag, ViewportSize);
+		ViewportsPanel->ApplySplitterDrag(EDragAxis::Horizontal, HorizontalDrag, ViewportSize);
 	if (VerticalDrag != 0.0f)
-		MultipleViewportsAdapter.ApplySplitterDrag(EDragAxis::Vertical, VerticalDrag, ViewportSize);
+		ViewportsPanel->ApplySplitterDrag(EDragAxis::Vertical, VerticalDrag, ViewportSize);
 	if (HorizontalDrag != 0.0f || VerticalDrag != 0.0f)
 	{
-		MultipleViewportsAdapter.UpdateLayout(ViewportSize, LocalMousePosition);
-		const FSplitRatio Ratio = MultipleViewportsAdapter.GetSplitRatio();
+		ViewportsPanel->UpdateLayout(ViewportSize, LocalMousePosition);
+		const FSplitRatio Ratio = ViewportsPanel->GetSplitRatio();
 		SettingsPanel->GetMutableSettings().MultipleViewportsHorizontal = Ratio.Horizontal;
 		SettingsPanel->GetMutableSettings().MultipleViewportsVertical = Ratio.Vertical;
 	}
@@ -395,16 +413,16 @@ void UEditorEngine::UpdateMultipleViewportState(const float DeltaTime)
 	// 우클릭 + 휠로 바뀐 이동 속도는 Settings에 바로 저장되고, 바뀐 View에 잠시 표시한다.
 	float& CameraSpeed = SettingsPanel->GetMutableSettings().CameraSpeed;
 	const float PreviousCameraSpeed = CameraSpeed;
-	MultipleViewportsAdapter.UpdateInput(
+	ViewportsPanel->UpdateInput(
 		DeltaTime,
 		LocalMousePosition,
 		CameraSpeed,
 		SettingsPanel->GetSettings().MouseSensitivity);
 	if (CameraSpeed != PreviousCameraSpeed)
-		ViewportsPanel->ShowCameraSpeed(MultipleViewportsAdapter.GetActiveViewIndex(), CameraSpeed);
+		ViewportsPanel->ShowCameraSpeed(ViewportsPanel->GetActiveViewIndex(), CameraSpeed);
 	// 겹친 창은 Hover 선택에서 제외하고 우클릭 Capture를 우선한다.
-	if (ViewportsPanel->IsHovered() || MultipleViewportsAdapter.GetCapturedViewIndex() != InvalidViewIndex)
-		MultipleViewportsAdapter.SetEditorViewIndex(MultipleViewportsAdapter.GetActiveViewIndex());
+	if (ViewportsPanel->IsHovered() || ViewportsPanel->GetCapturedViewIndex() != InvalidViewIndex)
+		ViewportsPanel->SetEditorViewIndex(ViewportsPanel->GetActiveViewIndex());
 }
 
 // 월드를 한 번 Tick·Capture한 뒤 에디터와 피킹을 갱신한다.
@@ -431,6 +449,7 @@ void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 	}
 	{
 		SCOPE_CYCLE_COUNTER(STAT_EditorTick);
+		UpdateEditorTabs();
 		EditorUI->Tick(DeltaTime);
 	}
 	// 라이트 프록시가 아래 UpdateAllTransforms에서 바뀐 작업 흐름으로 다시 계산되도록 먼저 반영한다.
@@ -459,8 +478,8 @@ void UEditorEngine::RenderMultipleViewports()
 	UWorld* CapturedWorld = nullptr;
 	for (int32 ViewIndex = 0; ViewIndex < 4; ++ViewIndex)
 	{
-		const bool bActive = MultipleViewportsAdapter.IsViewActive(ViewIndex);
-		ViewportsPanel->SetView(ViewIndex, MultipleViewportsAdapter.GetViewRect(ViewIndex), bActive);
+		const bool bActive = ViewportsPanel->IsViewActive(ViewIndex);
+		ViewportsPanel->SetView(ViewIndex, bActive);
 		if (!bActive)
 			continue;
 
@@ -468,13 +487,13 @@ void UEditorEngine::RenderMultipleViewports()
 		if (ViewWorld != CapturedWorld)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
-			MultipleViewportsAdapter.CaptureWorld(*ViewWorld);
+			RenderCollector.CaptureWorld(*ViewWorld);
 			CapturedWorld = ViewWorld;
 		}
 
 		{
 			SCOPE_CYCLE_COUNTER(STAT_BuildRenderQueue);
-			MultipleViewportsAdapter.BuildRenderQueue(ViewIndex, RenderQueue);
+			RenderCollector.BuildRenderQueue(GetViewportForView(ViewIndex), RenderQueue);
 		}
 
 		FSceneView SceneView = MakeSceneView(ViewIndex);
@@ -493,19 +512,19 @@ void UEditorEngine::RenderMultipleViewports()
 	}
 
 	// 별도 PIE 창은 패널 View 뒤에 PlayWorld를 한 번 더 캡처해 그린다.
-	if (bRenderPIEWindow && MultipleViewportsAdapter.IsViewActive(PIEViewIndex))
+	if (bRenderPIEWindow && IsViewActive(PIEViewIndex))
 	{
 		UWorld* ViewWorld = GetWorldForView(PIEViewIndex);
 		if (ViewWorld != CapturedWorld)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
-			MultipleViewportsAdapter.CaptureWorld(*ViewWorld);
+			RenderCollector.CaptureWorld(*ViewWorld);
 			CapturedWorld = ViewWorld;
 		}
 
 		{
 			SCOPE_CYCLE_COUNTER(STAT_BuildRenderQueue);
-			MultipleViewportsAdapter.BuildRenderQueue(PIEViewIndex, RenderQueue);
+			RenderCollector.BuildRenderQueue(GetViewportForView(PIEViewIndex), RenderQueue);
 		}
 
 		FSceneView SceneView = MakeSceneView(PIEViewIndex);
@@ -523,20 +542,11 @@ void UEditorEngine::RenderMultipleViewports()
 		CopyPIEWindowToBackbuffer();
 	}
 
-	EMultipleViewportsCameraPreset CameraPresets[4]{};
-	for (int32 ViewIndex = 0; ViewIndex < 4; ++ViewIndex) {
-		CameraPresets[ViewIndex] = MultipleViewportsAdapter.GetCameraPreset(ViewIndex);
-	}
 	for (int32 ViewIndex = 0; ViewIndex < 5; ++ViewIndex) {
 		UWorld * World = GetWorldForView(ViewIndex);
 		if (World == nullptr) continue;
 		World->GetScene().ClearShadowDirty();
 	}
-		
-	ViewportsPanel->SetControlState(
-		MultipleViewportsAdapter.GetLayoutMode(),
-		MultipleViewportsAdapter.GetSingleViewIndex(),
-		CameraPresets);
 }
 
 void UEditorEngine::UpdatePIEViewCamera()
@@ -547,7 +557,7 @@ void UEditorEngine::UpdatePIEViewCamera()
 	APlayerController* PlayerController = PlayWorld->GetPlayerController();
 	if (!PlayerController)
 	{
-		MultipleViewportsAdapter.ClearViewCameraOverride(PIEViewIndex);
+		GetViewportForView(PIEViewIndex).EndPlay();
 		return;
 	}
 
@@ -555,7 +565,7 @@ void UEditorEngine::UpdatePIEViewCamera()
 	// 별도 창이면 그 창이 OS 포커스를 가졌을 때다.
 	const bool bPIEViewFocused = IsPIEInWindow()
 		? ::GetForegroundWindow() == PIEWindow->GetHandle()
-		: MultipleViewportsAdapter.GetActiveViewIndex() == PIEViewIndex && !ImGui::GetIO().WantTextInput;
+		: ViewportsPanel->GetActiveViewIndex() == PIEViewIndex && !ImGui::GetIO().WantTextInput;
 	PlayerController->SetInputEnabled(bPIEViewFocused);
 
 	const FMinimalViewInfo& PlayerView = PlayerController->GetPlayerView();
@@ -567,7 +577,8 @@ void UEditorEngine::UpdatePIEViewCamera()
 		PlayerView.OrthoWidth,
 		PlayerView.NearClip,
 		PlayerView.FarClip };
-	MultipleViewportsAdapter.SetViewCameraOverride(PIEViewIndex, PlayerView.Location, Forward, Projection);
+	FViewport& PIEViewport = GetViewportForView(PIEViewIndex);
+	PIEViewport.BeginPlay().SetCamera(PlayerView.Location, Forward, Projection, PIEViewport.GetRect());
 }
 
 // 화면을 표시하고 UI 변경 후 View 설정을 보관한다.
@@ -583,20 +594,62 @@ void UEditorEngine::EndFrame()
 	FStatRegistry::EndFrame();
 }
 
+void UEditorEngine::UpdateEditorTabs()
+{
+	//const TArray<TUniquePtr<FEditorTab>>& Tabs = EditorUI->GetTabs();
+	//for (int32 Index = Tabs.Num() - 1; Index > 0; --Index)
+	//{
+	//	if (Tabs[Index]->IsOpen())
+	//		continue;
+	//	ReleaseWorldShadowResources(Tabs[Index]->GetWorld());
+	//	EditorUI->RemoveTab(Index);
+	//}
+
+	//if (PendingPreviewMesh)
+	//{
+	//	OpenSkeletalMeshViewer(PendingPreviewMesh);
+	//	PendingPreviewMesh = nullptr;
+	//}
+
+}
+
 FSceneView UEditorEngine::MakeSceneView(int32 ViewIndex) const
 {
-	const FRect& Rect = MultipleViewportsAdapter.GetViewRect(ViewIndex);
-	const FCameraProjection& Projection = MultipleViewportsAdapter.GetEngineProjection(ViewIndex);
+	const FViewport& Viewport = GetViewportForView(ViewIndex);
+	const FRect& Rect = Viewport.GetRect();
+	const FCameraProjection& Projection = Viewport.GetProjection();
 
 	return {
-		.ViewProjection = MultipleViewportsAdapter.GetEngineViewProjection(ViewIndex),
-		.Location = MultipleViewportsAdapter.GetEngineCameraLocation(ViewIndex),
-		.Forward = MultipleViewportsAdapter.GetEngineCameraForward(ViewIndex),
+		.ViewProjection = Viewport.PrepareView().ViewProjection,
+		.Location = Viewport.GetCameraLocation(),
+		.Forward = Viewport.GetCameraForward(),
 		.FovDegrees = Projection.FovDegrees > 0.0f ? Projection.FovDegrees : 60.0f,
 		.AspectRatio = (Rect.Width > 0.0f && Rect.Height > 0.0f) ? Rect.Width / Rect.Height : 16.0f / 9.0f,
 		.bOrthographic = Projection.Mode == EProjectionMode::Orthographic,
-		.RenderMode = MultipleViewportsAdapter.GetViewRenderMode(ViewIndex)
+		.RenderMode = Viewport.GetViewRenderMode()
 	};
+}
+
+FViewport& UEditorEngine::GetViewportForView(const int32 ViewIndex)
+{
+	if (ViewIndex == PIEWindowViewIndex)
+		return PIEWindowViewport;
+	return ViewportsPanel->GetViewport(ViewIndex);
+}
+
+const FViewport& UEditorEngine::GetViewportForView(const int32 ViewIndex) const
+{
+	if (ViewIndex == PIEWindowViewIndex)
+		return PIEWindowViewport;
+	return ViewportsPanel->GetViewport(ViewIndex);
+}
+
+// PIE 창 View는 레이아웃과 무관하게 크기와 카메라가 주어졌을 때만 활성이다.
+bool UEditorEngine::IsViewActive(const int32 ViewIndex) const
+{
+	if (ViewIndex == PIEWindowViewIndex)
+		return PIEWindowViewport.HasGameClient() && IsViewRectValid(PIEWindowViewport.GetRect());
+	return ViewportsPanel->IsViewActive(ViewIndex);
 }
 
 FSceneRenderSettings UEditorEngine::MakeSceneRenderSettings() const
@@ -632,6 +685,25 @@ FSceneRenderSettings UEditorEngine::MakeSceneRenderSettings() const
 			}
 		}
 	};
+}
+
+void UEditorEngine::OpenSkeletalMeshViewer(USkeletalMesh* SkeletalMesh)
+{
+	if(!SkeletalMesh)
+		return;
+
+	//같은 메시의 미리보기 탭이 존재한다면 해당 탭을 포커스한다.
+	for (const TUniquePtr<FEditorTab>& Tab : EditorUI->GetTabs())
+	{
+		if (Tab->GetEditingAsset() == SkeletalMesh)
+		{
+			Tab->RequestFocus();
+			return;
+		}
+	}
+
+
+	EditorUI->AddTab<FSkeletalMeshPreviewTab>(SkeletalMesh)->RequestFocus();
 }
 
 FWorldContext& UEditorEngine::GetEditorWorldContext()
@@ -673,7 +745,7 @@ void UEditorEngine::HandleOnPIEWorldChanged(UWorld* OldWorld, UWorld* NewWorld)
 
 	if (PIEViewIndex != InvalidViewIndex)
 	{
-		MultipleViewportsAdapter.ClearViewCameraOverride(PIEViewIndex);
+		GetViewportForView(PIEViewIndex).EndPlay();
 	}
 
 	PlayWorld->EndPlay();
@@ -687,7 +759,8 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 {
 	// 실행 중인 PIE View에는 Grid·Gizmo·Outline 같은 에디터 표시를 그리지 않는다.
 	// 별도 PIE 창은 편집 입력이 없으므로 일시정지 중에도 게임 화면만 보인다.
-	const bool bShowEditorOverlay = !IsPlayingView(ViewIndex) && ViewIndex != FMultipleViewportsAdapter::ExternalViewIndex;
+	const bool bShowEditorOverlay = !IsPlayingView(ViewIndex) && ViewIndex != PIEWindowViewIndex;
+	const FViewport& Viewport = GetViewportForView(ViewIndex);
 
 	FRenderingInfo PassInfo = ViewRenderingInfo;
 
@@ -745,9 +818,9 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 	// 원근은 픽셀 셰이더 Grid, 직교는 선 Grid를 쓴다 (언리얼 에디터와 같은 구분).
 	if (bShowEditorOverlay && Settings.bDrawGrid)
 	{
-		const EGridPlane GridPlane = MultipleViewportsAdapter.GetGridPlane(ViewIndex);
+		const EGridPlane GridPlane = Viewport.GetGridPlane();
 
-		if (!MultipleViewportsAdapter.IsOrthographic(ViewIndex))
+		if (!Viewport.IsOrthographic())
 		{
 			GridRenderer->OnRenderPSGrid(
 				ViewProjection, ViewCameraLocation, Settings, PassInfo.ViewportSetting
@@ -761,8 +834,8 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 				ViewCameraForward,
 				GridPlane,
 				static_cast<float>(Settings.GridSpacing),
-				!MultipleViewportsAdapter.IsOrthographic(ViewIndex) ||
-				MultipleViewportsAdapter.GetCameraPreset(ViewIndex) == EMultipleViewportsCameraPreset::OrthographicView,
+				!Viewport.IsOrthographic() ||
+				Viewport.GetEditorClient()->GetCameraPreset() == EMultipleViewportsCameraPreset::OrthographicView,
 				PassInfo.ViewportSetting
 			);
 		}
@@ -791,7 +864,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 			*Gizmo,
 			ViewProjection,
 			ViewCameraLocation,
-			MultipleViewportsAdapter.IsOrthographic(ViewIndex));
+			Viewport.IsOrthographic());
 	}
 
 	RenderCommand::ClearDepthStencil(PassInfo.DepthStencil.Texture);
@@ -799,7 +872,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 	if (Settings.bShowUUID)
 	{
 		// 월드 +Z가 아니라 화면 위쪽으로 띄워야 Top·Bottom처럼 Z축을 따라 보는 View에서도 물체를 가리지 않는다.
-		const FVector ScreenUp = MultipleViewportsAdapter.GetEngineCameraUp(ViewIndex);
+		const FVector ScreenUp = Viewport.GetCameraUp();
 
 		for (AActor* Actor : ViewWorld.GetPersistentLevel()->GetActors())
 		{
@@ -831,7 +904,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 				*SystemFont
 			);
 
-			const FMatrix BillboardWorld = MultipleViewportsAdapter.BuildEngineBillboardMatrix(ViewIndex, UUIDLocation, 1.0f, 1.0f);
+			const FMatrix BillboardWorld = Viewport.BuildBillboardMatrix(UUIDLocation, 1.0f, 1.0f);
 			TextRenderer->OnRender(Text, BillboardWorld, 0.5f, *SystemFont, ViewProjection);
 		}
 	}
@@ -849,7 +922,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 void UEditorEngine::UpdateGizmoAndPicking()
 {
 	// Delete는 BeginFrame에서 한 번만 처리하고 여기서는 View 입력만 다룬다.
-	const int32 ViewIndex = MultipleViewportsAdapter.GetActiveViewIndex();
+	const int32 ViewIndex = ViewportsPanel->GetActiveViewIndex();
 	if (ViewIndex == InvalidViewIndex || !ViewportsPanel->IsHovered())
 		return;
 	// 실행 중인 PIE View는 편집하지 않는다. 일시정지 중이면 PlayWorld를 피킹한다.
@@ -858,14 +931,15 @@ void UEditorEngine::UpdateGizmoAndPicking()
 
 	const FVector2 LocalMousePosition = ViewportsPanel->GetLocalMousePosition();
 	FRay Ray{};
-	if (!MultipleViewportsAdapter.TryGetActiveViewRay(LocalMousePosition, Ray))
+	if (!ViewportsPanel->TryGetActiveViewRay(LocalMousePosition, Ray))
 		return;
 
-	const FRect& Rect = MultipleViewportsAdapter.GetViewRect(ViewIndex);
+	const FViewport& Viewport = ViewportsPanel->GetViewport(ViewIndex);
+	const FRect& Rect = Viewport.GetRect();
 	const FVector2 ViewLocalMouse(
 		LocalMousePosition.X - Rect.X,
 		LocalMousePosition.Y - Rect.Y);
-	const FMatrix ViewProjection = MultipleViewportsAdapter.GetEngineViewProjection(ViewIndex);
+	const FMatrix ViewProjection = Viewport.PrepareView().ViewProjection;
 	bool bMouseDown = FInputSystem::IsMouseDown(EMouseButton::Left);
 
 	// 다른 월드의 선택 대상은 이 View에 Gizmo가 보이지 않으므로 조작하지 않는다.
@@ -883,16 +957,28 @@ void UEditorEngine::UpdateGizmoAndPicking()
 			static_cast<int>(Rect.Width),
 			static_cast<int>(Rect.Height),
 			bMouseDown,
-			MultipleViewportsAdapter.GetEngineCameraLocation(ViewIndex),
-			MultipleViewportsAdapter.IsOrthographic(ViewIndex));
+			Viewport.GetCameraLocation(),
+			Viewport.IsOrthographic());
 		UpdateSelectionGizmoDrag();
 	}
 
 	const bool bGizmoBlocksPick = bGizmoInView && (Gizmo->IsUsing() || Gizmo->GetHoveredAxis() >= 0);
 	if (FInputSystem::IsMousePressed(EMouseButton::Left) && !bGizmoBlocksPick)
 	{
-		MultipleViewportsAdapter.PickActiveView(LocalMousePosition, *ViewWorld);
-		AActor* PickedActor = MultipleViewportsAdapter.FindLastPickedActor();
+		AActor* PickedActor = nullptr;
+		{
+			SCOPE_CYCLE_COUNTER_ALWAYS(EditorStats::STAT_PickingTime);
+			// 렌더와 같은 함수로 각 Billboard의 위치·크기에 맞는 View 행렬을 만든다.
+			const auto ResolveBillboardTransform = [](const UBillboardComponent& Billboard, const void* Context) -> FMatrix
+			{
+				const auto& PickViewport = *static_cast<const FViewport*>(Context);
+				const FVector Scale = Billboard.GetWorldScale3D();
+				return PickViewport.BuildBillboardMatrix(Billboard.GetWorldLocation(), Scale.Y, Scale.Z);
+			};
+			FHitResult Hit;
+			if (ViewWorld->LineTraceSingle(Ray, Hit, ResolveBillboardTransform, &Viewport))
+				PickedActor = FindActorByPrimitiveId(Hit.HitComponent->GetUUID());
+		}
 
 		// Shift·Ctrl 클릭은 기존 선택에 더하거나 빼고, 빈 곳을 눌러도 선택을 유지한다.
 		// 다른 월드(PIE 일시정지 View 등)의 액터와는 섞지 않는다.
@@ -1027,7 +1113,10 @@ void UEditorEngine::FocusOnSelection()
 	const FVector Center = (Bounds.Min + Bounds.Max) * 0.5f;
 	const FVector HalfExtent = (Bounds.Max - Bounds.Min) * 0.5f;
 	const float Radius = std::sqrt(HalfExtent.X * HalfExtent.X + HalfExtent.Y * HalfExtent.Y + HalfExtent.Z * HalfExtent.Z);
-	MultipleViewportsAdapter.FocusViewOn(MultipleViewportsAdapter.GetEditorViewIndex(), Center, Radius);
+	// 외부 카메라가 그리는 View(PIE 등)는 옮기지 않는다.
+	const int32 ViewIndex = ViewportsPanel->GetEditorViewIndex();
+	if (ViewIndex >= 0 && ViewIndex < FViewportsPanel::ViewCount && !ViewportsPanel->GetViewport(ViewIndex).HasGameClient())
+		ViewportsPanel->GetEditorClient(ViewIndex).FocusOn(Center, Radius, ViewportsPanel->GetViewRect(ViewIndex));
 }
 
 void UEditorEngine::SpawnActorFromToolbar(UClass* Class)
@@ -1038,10 +1127,10 @@ void UEditorEngine::SpawnActorFromToolbar(UClass* Class)
 
 	// 편집 중인 View 카메라 앞에 놓아 바로 보이게 한다.
 	constexpr float SpawnDistance = 10.0f;
-	const int32 ViewIndex = MultipleViewportsAdapter.GetEditorViewIndex();
+	const FViewport& Viewport = ViewportsPanel->GetViewport(ViewportsPanel->GetEditorViewIndex());
 	FTransform SpawnTransform = FTransform::Identity;
-	SpawnTransform.Location = MultipleViewportsAdapter.GetEngineCameraLocation(ViewIndex)
-		+ MultipleViewportsAdapter.GetEngineCameraForward(ViewIndex) * SpawnDistance;
+	SpawnTransform.Location = Viewport.GetCameraLocation()
+		+ Viewport.GetCameraForward() * SpawnDistance;
 
 	if (AActor* NewActor = EditorWorld->SpawnActor(Class, NAME_None, &SpawnTransform))
 		OutlinerPanel->SelectActor(NewActor);
@@ -1202,12 +1291,12 @@ void UEditorEngine::StartPlayInEditorSession()
 	// 창을 만들지 못하면 선택한 View에서 실행한다.
 	if (PlayMode == EPlayModeType::InEditorFloating && CreatePIEWindow())
 	{
-		PIEViewIndex = FMultipleViewportsAdapter::ExternalViewIndex;
+		PIEViewIndex = PIEWindowViewIndex;
 	}
 	else
 	{
 		// 지금 편집 중인 View 하나만 PIE 월드를 보여준다.
-		PIEViewIndex = MultipleViewportsAdapter.GetEditorViewIndex();
+		PIEViewIndex = ViewportsPanel->GetEditorViewIndex();
 	}
 
 	FWorldContext& PIEContext = CreateNewWorldContext(EWorldType::PIE);
@@ -1224,8 +1313,8 @@ void UEditorEngine::StartPlayInEditorSession()
 		APawn* Pawn = PlayerController ? PlayerController->GetPawn() : nullptr;
 		if (!PlayWorld->HasPlayerStart() && Pawn)
 		{
-			const int32 SourceViewIndex = MultipleViewportsAdapter.GetEditorViewIndex();
-			const FViewCamera& EditorCam = MultipleViewportsAdapter.GetViewCamera(SourceViewIndex);
+			const int32 SourceViewIndex = ViewportsPanel->GetEditorViewIndex();
+			const FViewCamera& EditorCam = ViewportsPanel->GetEditorClient(SourceViewIndex).GetCamera();
 
 			FRotator ViewRotation = EditorCam.Transform.Rotation.ToFRotator();
 			ViewRotation.Roll = 0.0f;
@@ -1290,8 +1379,8 @@ void UEditorEngine::DestroyPIEWindow()
 	if (!PIEWindow)
 		return;
 
-	MultipleViewportsAdapter.SetExternalViewSize(0, 0);
-	MultipleViewportsAdapter.ClearViewCameraOverride(FMultipleViewportsAdapter::ExternalViewIndex);
+	PIEWindowViewport.SetRect({});
+	PIEWindowViewport.EndPlay();
 
 	PIETargets.Release();
 	bPIEWindowRendered = false;
@@ -1312,7 +1401,7 @@ bool UEditorEngine::UpdatePIEWindowTargets()
 	// 최소화 중에는 그릴 대상이 없다.
 	if (Width == 0 || Height == 0 || ::IsIconic(PIEWindow->GetHandle()))
 	{
-		MultipleViewportsAdapter.SetExternalViewSize(0, 0);
+		PIEWindowViewport.SetRect({});
 		return false;
 	}
 
@@ -1321,7 +1410,8 @@ bool UEditorEngine::UpdatePIEWindowTargets()
 
 	PIETargets.Resize(Width, Height);
 
-	MultipleViewportsAdapter.SetExternalViewSize(Width, Height);
+	// PIE 창 View Rect는 원점 기준 렌더 타깃 크기와 같다.
+	PIEWindowViewport.SetRect({0.0f, 0.0f, static_cast<float>(Width), static_cast<float>(Height)});
 	return true;
 }
 
@@ -1345,7 +1435,7 @@ void UEditorEngine::CopyPIEWindowToBackbuffer()
 
 FTexture2D* UEditorEngine::GetFxaaTargetForView(const int32 ViewIndex) const
 {
-	if (ViewIndex == FMultipleViewportsAdapter::ExternalViewIndex)
+	if (ViewIndex == PIEWindowViewIndex)
 		return PIETargets.FxaaTemp.get();
 	return ViewportsPanel->GetFxaaTarget(ViewIndex);
 }

@@ -1,6 +1,6 @@
 #include "EnginePCH.h"
 #include "Editor/Settings/SettingsPanel.h"
-#include "Editor/LevelEditor/MultipleViewports/Adapter/MultipleViewportsAdapter.h"
+#include "Editor/Viewports/ViewportsPanel.h"
 
 #include "Engine/World.h"
 
@@ -8,7 +8,7 @@
 FSettingsPanel::~FSettingsPanel()
 {
 	// 종료 시 다른 객체를 참조하지 않고 보존한 설정만 저장한다.
-	ViewportAdapter = nullptr;
+	ViewportsPanel = nullptr;
 	SaveSettings();
 }
 
@@ -68,10 +68,10 @@ void FSettingsPanel::OnRender()
 	ImGui::Checkbox("Linear Workflow", &Settings.bLinearWorkflow);
 	ImGui::SetItemTooltip("Off: no sRGB decode/encode (gamma-space rendering), for comparison.");
 	// 톤매핑은 View별 Lit에서만 적용되므로, 보이는 View 중 Lit이 하나라도 있어야 조작할 의미가 있다
-	bool bAnyLitView = ViewportAdapter == nullptr;
-	for (int32 Index = 0; ViewportAdapter && Index < FMultipleViewportsAdapter::MaxViewCount; ++Index)
+	bool bAnyLitView = ViewportsPanel == nullptr;
+	for (int32 Index = 0; ViewportsPanel && Index < FViewportsPanel::ViewCount; ++Index)
 	{
-		if (ViewportAdapter->IsViewActive(Index) && ViewportAdapter->GetViewRenderMode(Index).ViewMode == EViewMode::Lit)
+		if (ViewportsPanel->IsViewActive(Index) && ViewportsPanel->GetViewport(Index).GetViewRenderMode().ViewMode == EViewMode::Lit)
 		{
 			bAnyLitView = true;
 			break;
@@ -392,9 +392,9 @@ bool FSettingsPanel::LoadSettings()
 }
 
 // 초기화된 카메라에 파일 설정을 적용하고 미저장 값은 초기 설정으로 채운다.
-void FSettingsPanel::SetViewportAdapter(FMultipleViewportsAdapter* Value)
+void FSettingsPanel::SetViewportsPanel(FViewportsPanel* Value)
 {
-    ViewportAdapter = Value;
+    ViewportsPanel = Value;
     ApplyViewportSettings();
     CaptureViewportSettings();
 }
@@ -402,18 +402,19 @@ void FSettingsPanel::SetViewportAdapter(FMultipleViewportsAdapter* Value)
 // Transform·투영·표시·레이아웃을 저장용 설정에 복사한다.
 void FSettingsPanel::ReadViewportSettings(FEditorSettings& Out) const
 {
-    if (!ViewportAdapter) return;
-    Out.MultipleViewportsHorizontal = ViewportAdapter->GetSplitRatio().Horizontal;
-    Out.MultipleViewportsVertical = ViewportAdapter->GetSplitRatio().Vertical;
-    Out.bMultipleViewportsSingle = ViewportAdapter->GetLayoutMode() == ELayoutMode::Single;
-    Out.MultipleViewportsSingleViewIndex = ViewportAdapter->GetSingleViewIndex();
+    if (!ViewportsPanel) return;
+    Out.MultipleViewportsHorizontal = ViewportsPanel->GetSplitRatio().Horizontal;
+    Out.MultipleViewportsVertical = ViewportsPanel->GetSplitRatio().Vertical;
+    Out.bMultipleViewportsSingle = ViewportsPanel->GetLayoutMode() == ELayoutMode::Single;
+    Out.MultipleViewportsSingleViewIndex = ViewportsPanel->GetSingleViewIndex();
     for (int32 Index = 0; Index < 4; ++Index)
     {
-        const auto& Camera = ViewportAdapter->GetViewCamera(Index);
+        const FEditorViewportClient& Client = ViewportsPanel->GetEditorClient(Index);
+        const auto& Camera = Client.GetCamera();
         Out.ViewFov[Index] = Camera.Projection.FovDegrees;
         Out.ViewOrthoWidth[Index] = Camera.Projection.OrthoWidth;
-        Out.ViewPreset[Index] = static_cast<int32>(ViewportAdapter->GetCameraPreset(Index));
-        Out.ViewRenderMode[Index] = ViewportAdapter->GetViewRenderMode(Index);
+        Out.ViewPreset[Index] = static_cast<int32>(Client.GetCameraPreset());
+        Out.ViewRenderMode[Index] = ViewportsPanel->GetViewport(Index).GetViewRenderMode();
         Out.ViewLocation[Index] = Camera.Transform.Location;
         Out.ViewRotation[Index] = Camera.Transform.Rotation;
         Out.bViewLocationSaved[Index] = true;
@@ -421,26 +422,28 @@ void FSettingsPanel::ReadViewportSettings(FEditorSettings& Out) const
     }
 }
 
-// 종료 시 Adapter를 읽지 않도록 살아 있는 동안 저장용 설정을 갱신한다.
+// 종료 시 ViewportsPanel을 읽지 않도록 살아 있는 동안 저장용 설정을 갱신한다.
 void FSettingsPanel::CaptureViewportSettings() { ReadViewportSettings(Settings); }
 
 // 저장 프리셋·투영·표시·뷰 모드를 슬롯별로 복원하며 저장되지 않은 값은 초기값을 쓴다.
 void FSettingsPanel::ApplyViewportSettings()
 {
-    if (!ViewportAdapter) return;
-    ViewportAdapter->SetSplitRatio({Settings.MultipleViewportsHorizontal, Settings.MultipleViewportsVertical});
-    ViewportAdapter->SetSingleViewIndex(Settings.MultipleViewportsSingleViewIndex);
-    ViewportAdapter->SetLayoutMode(Settings.bMultipleViewportsSingle ? ELayoutMode::Single : ELayoutMode::QuadSplit);
+    if (!ViewportsPanel) return;
+    ViewportsPanel->SetSplitRatio({Settings.MultipleViewportsHorizontal, Settings.MultipleViewportsVertical});
+    ViewportsPanel->SetSingleViewIndex(Settings.MultipleViewportsSingleViewIndex);
+    ViewportsPanel->SetLayoutMode(Settings.bMultipleViewportsSingle ? ELayoutMode::Single : ELayoutMode::QuadSplit);
     for (int32 Index = 0; Index < 4; ++Index)
     {
+        FEditorViewportClient& Client = ViewportsPanel->GetEditorClient(Index);
+        const FRect& Rect = ViewportsPanel->GetViewRect(Index);
         if (Settings.ViewPreset[Index] >= 0 && Settings.ViewPreset[Index] <= 7)
-            ViewportAdapter->ApplyCameraPreset(Index, static_cast<EMultipleViewportsCameraPreset>(Settings.ViewPreset[Index]));
-        FViewCamera Camera = ViewportAdapter->GetViewCamera(Index);
+            Client.ApplyCameraPreset(static_cast<EMultipleViewportsCameraPreset>(Settings.ViewPreset[Index]), Rect);
+        FViewCamera Camera = Client.GetCamera();
         if (Settings.ViewFov[Index] > 0) Camera.Projection.FovDegrees = Settings.ViewFov[Index];
         if (Settings.ViewOrthoWidth[Index] > 0) Camera.Projection.OrthoWidth = Settings.ViewOrthoWidth[Index];
         if (Settings.bViewLocationSaved[Index]) Camera.Transform.Location = Settings.ViewLocation[Index];
         if (Settings.bViewRotationSaved[Index]) Camera.Transform.Rotation = Settings.ViewRotation[Index];
-        ViewportAdapter->ApplyCameraProperties(Index, Camera, false);
-        ViewportAdapter->SetViewRenderMode(Index, Settings.ViewRenderMode[Index]);
+        Client.ApplyCameraProperties(Camera, false, Rect);
+        ViewportsPanel->GetViewport(Index).SetViewRenderMode(Settings.ViewRenderMode[Index]);
     }
 }

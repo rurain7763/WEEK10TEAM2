@@ -181,17 +181,17 @@ void UBenchmarkEngine::InitEditorTools()
 			}
 		});
 
-	OutputLogPanel = EditorUI->AddEditorPanel<FOutputLogPanel>();
+	OutputLogPanel = EditorUI->GetLevelTab()->AddPanel<FOutputLogPanel>();
 	FLog::AddSink(OutputLogPanel);
 
-	DetailsPanel = EditorUI->AddEditorPanel<FDetailsPanel>();
+	DetailsPanel = EditorUI->GetLevelTab()->AddPanel<FDetailsPanel>();
 	DetailsPanel->SetWorld(World);
 
-	EditorControlsPanel = EditorUI->AddEditorPanel<FEditorControlsPanel>();
+	EditorControlsPanel = EditorUI->GetLevelTab()->AddPanel<FEditorControlsPanel>();
 	EditorControlsPanel->SetWorld(World);
 	EditorControlsPanel->SetGizmo(Gizmo.get());
 
-	OutlinerPanel = EditorUI->AddEditorPanel<FOutlinerPanel>();
+	OutlinerPanel = EditorUI->GetLevelTab()->AddPanel<FOutlinerPanel>();
 	OutlinerPanel->SetWorld(World);
 	OutlinerPanel->SetSelectionCallback(
 		[this](USceneComponent* Scene) { SelectScene(Scene); });
