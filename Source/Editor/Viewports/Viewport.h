@@ -28,6 +28,8 @@ public:
 
     // 담은 패널·창이 레이아웃을 계산할 때마다 갱신한다. 크기가 0이면 숨김이며 렌더 타깃은 유지한다.
     void SetOutputSize(FVector2 InSize) { OutputSize = InSize; }
+    // 픽셀 크기로 받는 형태. 창·패널처럼 정수 크기를 아는 쪽이 쓴다.
+    void SetOutputSize(uint32 Width, uint32 Height) { OutputSize = {static_cast<float>(Width), static_cast<float>(Height)}; }
     FVector2 GetOutputSize() const { return OutputSize; }
     bool IsVisible() const { return OutputSize.X > 0.0f && OutputSize.Y > 0.0f; }
     // 원점 기준 출력 사각형. 카메라 계산 함수가 받는 FRect 형식이다.
