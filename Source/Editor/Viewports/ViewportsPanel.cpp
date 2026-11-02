@@ -165,8 +165,12 @@ void FViewportsPanel::UpdateLayout(const FVector2 WindowSize, const FVector2 Loc
 	SyncViewportRects();
 	// 창 크기와 Single/Quad 전환으로 Aspect가 바뀌어도 저장값과 실제 투영값을 함께 보정한다.
 	for (int32 ViewIndex = 0; ViewIndex < ViewCount; ++ViewIndex)
+	{
 		if (IsViewRectValid(ViewRects[ViewIndex]))
 			GetEditorClient(ViewIndex).OnRectChanged(ViewRects[ViewIndex]);
+		// 패널이 이미지를 띄울 Slot. 렌더 타깃은 엔진이 그리기 전에 Viewport에서 맞춘다.
+		Slots[ViewIndex].bActive = IsViewActive(ViewIndex);
+	}
 	// Hover 추적은 비활성화한다. 클릭 위치 판정 함수는 입력 전환에서 계속 사용한다.
 	// InputState.HoveredViewIndex = DetermineHoveredView(LocalMousePosition, ViewRects);
 	InputState.HoveredViewIndex = InvalidViewIndex;
@@ -196,7 +200,9 @@ void FViewportsPanel::UpdateInput(
 	float& InOutMoveSpeed,
 	const float MouseSensitivity)
 {
-	const int WheelDelta = FInputSystem::GetWheelDelta(); // 이 Hook은 프레임마다 정확히 한 번만 호출한다.
+	// 휠은 읽으면 비워지므로, 이 패널 위에 있거나 우클릭 Capture 중일 때만 가져간다. 아니면 에셋 탭이 받는다
+	const bool bTakeWheel = IsHovered() || InputState.CapturedViewIndex != InvalidViewIndex;
+	const int WheelDelta = bTakeWheel ? FInputSystem::GetWheelDelta() : 0;
 	if (ImGui::IsKeyReleased(ImGuiKey_MouseRight))
 		InputState = EndCapture(InputState);
 	const int32 PointerViewIndex = DetermineHoveredView(LocalMousePosition, ViewRects);
@@ -265,19 +271,6 @@ bool FViewportsPanel::Init()
 void FViewportsPanel::Tick(float DeltaTime)
 {
 	(void)DeltaTime;
-}
-
-// 레이아웃 Rect에 맞춰 View 활성 상태와 타깃 크기를 갱신한다.
-void FViewportsPanel::SetView(const int32 ViewIndex, const bool bActive)
-{
-	assert(ViewIndex >= 0 && ViewIndex < 4);
-	FViewSlot& Slot = Slots[ViewIndex];
-	const FRect& Rect = ViewRects[ViewIndex];
-	Slot.bActive = bActive && Rect.Width > 0.0f && Rect.Height > 0.0f;
-	if (!Slot.bActive)
-		return;
-
-	Slot.Viewport.EnsureRenderTargets();
 }
 
 // 마우스 위치에서 패널 원점을 빼 로컬 좌표로 바꾼다.
@@ -506,10 +499,24 @@ void FViewportsPanel::DrawCameraSpeedNotice(ImDrawList* DrawList) const
 void FViewportsPanel::OnRender()
 {
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0.0f, 0.0f});
-	ImGui::Begin("Viewports", nullptr,
+	const bool bVisible = ImGui::Begin("Viewports", nullptr,
 		ImGuiWindowFlags_NoScrollbar |
 		ImGuiWindowFlags_NoScrollWithMouse |
 		ImGuiWindowFlags_NoTitleBar);
+	// 탭이 가려지면 크기를 0으로 둔다. 다음 프레임 레이아웃에서 모든 View가 비활성이 되어
+	// 엔진이 렌더와 입력을 건너뛴다. 남아 있던 Splitter 드래그와 Hover도 버린다.
+	if (!bVisible)
+	{
+		ContentSize = {};
+		bHovered = false;
+		ControlRects.Reset();
+		bDraggingVerticalSplitter = false;
+		bDraggingHorizontalSplitter = false;
+		PendingHorizontalDrag = PendingVerticalDrag = 0.0f;
+		ImGui::End();
+		ImGui::PopStyleVar();
+		return;
+	}
 
 	ContentOrigin = ImGui::GetCursorScreenPos();
 	ContentSize = ImGui::GetContentRegionAvail();

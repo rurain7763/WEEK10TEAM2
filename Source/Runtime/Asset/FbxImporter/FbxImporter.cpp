@@ -85,6 +85,8 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 		MG->Destroy();
 		return false;
 	}
+	if (Scene->GetGlobalSettings().GetSystemUnit() != FbxSystemUnit::m)
+		FbxSystemUnit::m.ConvertScene(Scene);
 
 	// 일단 오른손 좌표계로 계산하고 후에 반전 시킨다.
 	// eParityEven = X축, eParityOdd = Y축

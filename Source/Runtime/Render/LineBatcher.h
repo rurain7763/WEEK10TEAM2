@@ -34,6 +34,8 @@ public:
 
 	void Flush();
 	void OnRender(const FMatrix& ViewProjection);
+	// false면 깊이 검사 없이 그린다. 메시 안쪽의 본처럼 가려지면 안 되는 선에 쓴다. BeginFrame이 다시 켠다
+	void SetDepthTest(bool bEnable);
 
 private:
 	FRenderer* Renderer;

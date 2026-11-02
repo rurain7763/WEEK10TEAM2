@@ -7,12 +7,12 @@ void USkeleton::Initialize(const TArray<FModelNode>& InNodes, const TArray<FMode
 	Bones = InBones;
 }
 
-const TArray<FModelNode> USkeleton::GetNodes() const
+const TArray<FModelNode>& USkeleton::GetNodes() const
 {
 	return Nodes;
 }
 
-const TArray<FModelBone> USkeleton::GetBones() const
+const TArray<FModelBone>& USkeleton::GetBones() const
 {
 	return Bones;
 }

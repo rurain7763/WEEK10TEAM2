@@ -210,6 +210,8 @@ StructuredBuffer<uint> SpotTileList : register(t11);
 StructuredBuffer<FShadowInfo> StructuredShadowData : register(t12);
 
 #if USE_SKINNING
+// FXC는 StructuredBuffer 안의 행렬에 pack_matrix(row_major)를 적용하지 않고 열 우선으로 읽는다.
+// CPU 행 우선 행렬이 전치되어 들어오므로 꺼낼 때 transpose로 되돌린다
 StructuredBuffer<float4x4> BoneMatrices : register(t13);
 #endif
 
@@ -891,24 +893,34 @@ float3 WorldPosition, float3 V, float n, float2 PixelPosition, out float3 Diffus
 float3 GetLocalVertexPosition(FVSInput Input)
 {
 #if USE_SKINNING
+    float3 SkinnedPosition = float3(0, 0, 0);
+    float3 SkinnedNormal = float3(0, 0, 0);
+    float3 SkinnedTangent = float3(0, 0, 0);
     if (Input.BoneInfluenceCount == 0)
     {
-        return Input.Position;
+        SkinnedPosition = Input.Position;
+        SkinnedNormal = Input.Normal;
+        SkinnedTangent = Input.Tangent.xyz;
     }
 
-    float3 LocalPosition = float3(0.0f, 0.0f, 0.0f);
-    for (int Index = 0; Index < Input.BoneInfluenceCount; ++Index)
+    // 노멀·탄젠트도 위치와 같은 본 행렬(회전·스케일 부분)로 섞어야 굽힌 자세에서 음영이 따라온다
+    for (int i = 0; i < Input.BoneInfluenceCount; i++)
     {
-        int BoneIndex = Input.BoneIndices[Index];
-        float BoneWeight = Input.BoneWeights[Index];
-        float4 Position =
-            mul(float4(Input.Position, 1.0f), BoneMatrices[BoneIndex]) * BoneWeight;
-        LocalPosition += Position.xyz;
+        int BoneIndex = Input.BoneIndices[i];
+        float BoneWeight = Input.BoneWeights[i];
+        float4x4 BoneMatrix = transpose(BoneMatrices[BoneIndex]);
+        SkinnedPosition += mul(float4(Input.Position, 1.0), BoneMatrix).xyz * BoneWeight;
+        SkinnedNormal += mul(Input.Normal, (float3x3) BoneMatrix) * BoneWeight;
+        SkinnedTangent += mul(Input.Tangent.xyz, (float3x3) BoneMatrix) * BoneWeight;
     }
+    SkinnedNormal = normalize(SkinnedNormal);
+    SkinnedTangent = normalize(SkinnedTangent);
 
-    return LocalPosition;
+    float4 WorldPosition = mul(float4(SkinnedPosition, 1.0f), World);
 #else
-    return Input.Position;
+    float3 SkinnedNormal = Input.Normal;
+    float3 SkinnedTangent = Input.Tangent.xyz;
+    float4 WorldPosition = mul(float4(Input.Position, 1.0f), World);
 #endif
 }
 
@@ -930,11 +942,9 @@ FPSInput mainVS(FVSInput Input)
 
     Output.Position = mul(WorldPosition, ViewProjection);
     Output.WorldPosition = WorldPosition.xyz;
-    Output.Normal = mul(Input.Normal, (float3x3) NormalMatrix);
-    Output.UV = Input.UV;
-    Output.ReceivesDecals = ReceivesDecals;
+    Output.Normal = mul(SkinnedNormal, (float3x3) NormalMatrix);
 #if USE_NORMAL_MAP
-    Output.Tangent = mul(Input.Tangent.xyz, (float3x3) World);
+    Output.Tangent = mul(SkinnedTangent, (float3x3) World);
     Output.BitangentSign = Input.Tangent.w;
 #endif
 #if GOURAUD
