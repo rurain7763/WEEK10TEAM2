@@ -17,6 +17,7 @@
 #include "GameFramework/Actor.h"
 #include "Text/TextRenderer.h"
 #include "UObject/UObjectIterator.h"
+#include "DecalRenderer.h"
 
 FSceneRenderer::FSceneRenderer() = default;
 
@@ -43,6 +44,9 @@ void FSceneRenderer::Init(FRenderer* InRenderer)
 
 	TextRenderer = MakeUnique<FTextRenderer>();
 	TextRenderer->Init();
+
+	DecalRenderer = MakeUnique<FDecalRenderer>();
+	DecalRenderer->Init(Renderer);
 }
 
 void FSceneRenderer::BeginFrame()
@@ -114,8 +118,10 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 
 	FStatOverlay::SetShadowStats(ShadowStats);
 
-	// 1. 불투명·반투명 Pass (Linear 씬 컬러)
-	RenderOpaquePass(SceneView, Settings, World, SceneInfo, RenderQueue, Lighting.Directional);
+	// 1. 불투명·데칼·반투명 Pass (Linear 씬 컬러)
+	RenderOpaquePass(SceneView, Settings, SceneInfo, RenderQueue, Lighting.Directional);
+	RenderDecalPass(SceneView, Settings, World, SceneInfo);
+	RenderTranslucentPass(SceneView, Settings, World, SceneInfo);
 
 	if (Settings.bDepthView)
 	{
@@ -144,22 +150,27 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 	}
 }
 
-void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, 
-									  const FRenderingInfo& SceneInfo, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight)
+void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FRenderingInfo& SceneInfo, 
+									  FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight)
 {
 	// 뷰 모드가 셰이더 permutation을, Wireframe 여부가 Fill Mode를 정한다. 삼각형 연결은 그대로다.
 	const FViewRenderMode ViewRenderMode = SceneView.RenderMode;
-	const bool bVisualizeLightCount = Settings.bVisualizeTileLightCount;
 	if (ViewRenderMode.ViewMode == EViewMode::Lit)
 	{
 		Renderer->EnsureTileLightCapacity(
 			SceneView.ViewProjection,
 			SceneInfo.ViewportSetting.Width,
-			SceneInfo.ViewportSetting.Height, bVisualizeLightCount);
+			SceneInfo.ViewportSetting.Height, 
+			Settings.bVisualizeTileLightCount);
 	}
 
 	// 배경은 화면에서 sRGB 0.3 회색으로 보여야 한다. Linear 작업 흐름에서는 인코딩될 것이므로 디코딩해 지운다.
 	FRenderingInfo PassInfo = SceneInfo;
+	// 배경 출력에서 표면 데이터 타깃 제외
+	PassInfo.ColorRenderTargets.SetNum(1);
+	PassInfo.ColorRenderTargets[0].LoadOp = ERenderTargetLoadOp::Clear;
+	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Clear;
+
 	const float ClearValue = ColorWorkflow::bLinear ? FLinearColor::SRGBToLinear(0.3f) : 0.3f;
 	PassInfo.ColorRenderTargets[0].ClearValue.ColorClearValue = FVector4(ClearValue, ClearValue, ClearValue, 1.0f);
 	RenderCommand::BeginRenderPass(PassInfo);
@@ -176,6 +187,16 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 		SkyboxRenderer->OnRender(SceneView.ViewProjection, SceneView.Location, DirectionalLight);
 	}
 
+	RenderCommand::EndRenderPass();
+
+	PassInfo = SceneInfo;
+	PassInfo.ColorRenderTargets[0].LoadOp = ERenderTargetLoadOp::Load;
+	PassInfo.ColorRenderTargets[1].LoadOp = ERenderTargetLoadOp::Clear;
+	PassInfo.ColorRenderTargets[1].ClearValue.ColorClearValue = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
+
+	RenderCommand::BeginRenderPass(PassInfo);
+
 	if (bDrawPrimitives)
 	{
 		RenderCommand::SetRasterizerState(SceneRasterizerState);
@@ -188,13 +209,50 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 		// Grid는 깊이를 쓰지 않는 반투명 위에도 겹칠 수 있지만, 언리얼의 에디터 프리미티브처럼 Overlay Pass에서 마지막에 합성한다.
 		Renderer->RenderQueueSorting(RenderQueue, SceneView.ViewProjection, SceneView.Location);
 		Renderer->RenderOpaque(SceneView.ViewProjection);
-		DrawWorldText(SceneView, ViewWorld);
-		RenderCommand::SetRasterizerState(SceneRasterizerState); // TextRenderer가 상태를 바꾸므로 되돌림
-		Renderer->RenderTranslucent(SceneView.ViewProjection);
-		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
+
+		// 불투명 패스의 래스터 상태 복원
 		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 	}
+	RenderCommand::EndRenderPass();
+}
 
+void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& World, const FRenderingInfo& SceneInfo)
+{
+	const EViewMode ViewMode = SceneView.RenderMode.ViewMode;
+	if (!Settings.bDrawPrimitives || Settings.bDepthView || Settings.bVisualizeCascades
+		|| Settings.bVisualizeTileLightCount || (ViewMode != EViewMode::Lit && ViewMode != EViewMode::Unlit))
+	{
+		return;
+	}
+	DecalRenderer->OnRender(World, SceneView, SceneInfo);
+}
+
+// 불투명 표면 데이터 이후의 텍스트 및 반투명 합성
+void FSceneRenderer::RenderTranslucentPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, 
+											const UWorld& ViewWorld, const FRenderingInfo& SceneInfo)
+{
+	if (!Settings.bDrawPrimitives)
+	{
+		return;
+	}
+
+	// 표면 데이터 타깃을 제외한 컬러 및 깊이 유지
+	FRenderingInfo PassInfo = SceneInfo;
+	PassInfo.ColorRenderTargets.SetNum(1);
+	PassInfo.ColorRenderTargets[0].LoadOp = ERenderTargetLoadOp::Load;
+	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
+
+	RenderCommand::BeginRenderPass(PassInfo);
+
+	const ERasterizerState SceneRasterizerState = SceneView.RenderMode.ViewMode == EViewMode::Wireframe
+		? ERasterizerState::Wireframe : ERasterizerState::SolidBack;
+	
+	// 기존 불투명 렌더패스에서 옮겨온 부분.
+	DrawWorldText(SceneView, ViewWorld);
+	RenderCommand::SetRasterizerState(SceneRasterizerState); // TextRenderer가 상태를 바꾸므로 되돌림
+	Renderer->RenderTranslucent(SceneView.ViewProjection);
+	// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
+	RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 
 	RenderCommand::EndRenderPass();
 }
@@ -231,7 +289,7 @@ void FSceneRenderer::RenderFogPass(const FSceneView& SceneView, const UWorld& Vi
 		return;
 
 	FRenderingInfo PassInfo = SceneInfo;
-
+	PassInfo.ColorRenderTargets.SetNum(1);
 	//Load는 기존 내용을 그대로 두고 그 위에 그림을 그린다는뜻
 	for (FRenderingDesc& Color : PassInfo.ColorRenderTargets)
 		Color.LoadOp = ERenderTargetLoadOp::Load;

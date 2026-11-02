@@ -12,6 +12,12 @@ void USkinnedMeshComponent::PostLoad()
 	UpdateBoneMatrices();
 }
 
+void USkinnedMeshComponent::PostDuplicate(bool bDuplicateForPIE)
+{
+	Super::PostDuplicate(bDuplicateForPIE);
+	UpdateBoneMatrices();
+}
+
 void USkinnedMeshComponent::SetSkeletalMesh(USkeletalMesh* InMesh)
 {
 	SkeletalMesh = InMesh;

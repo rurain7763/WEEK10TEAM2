@@ -31,6 +31,7 @@ UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
 
 	UMaterial* Instance = NewObject<UMaterial>();
 
+	Instance->MaterialDomain = Source->MaterialDomain;
 	Instance->ParamLayout = Source->ParamLayout;
 	Instance->Shader = Source->Shader;
 	Instance->Textures = Source->Textures;
@@ -82,7 +83,9 @@ json UMaterial::SaveMaterial(const UMaterial* Material)
 	}
 
 	const UMaterial* Base = Material->GetBaseAsset();
-	Out["Base"] = Base ? Base->GetPath() : FString("DefaultMaterial");
+	Out["Base"] = Base ? Base->GetPath() : FString(Material->MaterialDomain == EMaterialDomain::Decal
+			? "DefaultDecalMaterial" : "DefaultMaterial");
+	Out["MaterialDomain"] = Material->MaterialDomain == EMaterialDomain::Decal ? "Decal" : "Surface";
 	Out["BaseColor"] = Material->BaseColor;
 	Out["UVScrollSpeed"] = {
 		Material->UVScrollSpeed.X,
@@ -114,6 +117,9 @@ UMaterial* UMaterial::LoadMaterial(const json& In)
 		return UAssetManager::GetAssetByPath<UMaterial>(In["Asset"].get<FString>());
 	}
 
+	const bool bHasDomain = In.contains("MaterialDomain");
+	const bool bDecalDomain = bHasDomain && In["MaterialDomain"].get<FString>() == "Decal";
+
 	UMaterial* Base = nullptr;
 	if (In.contains("Base"))
 	{
@@ -121,13 +127,17 @@ UMaterial* UMaterial::LoadMaterial(const json& In)
 	}
 	if (!Base)
 	{
-		Base = UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
+		Base = UAssetManager::GetAssetByPath<UMaterial>(bDecalDomain ? "DefaultDecalMaterial" : "DefaultMaterial");
 	}
 
 	UMaterial* Instance = UMaterial::CreateInstance(Base);
 	if (!Instance)
 	{
 		return nullptr;
+	}
+	if (bHasDomain)
+	{
+		Instance->MaterialDomain = bDecalDomain ? EMaterialDomain::Decal : EMaterialDomain::Surface;
 	}
 
 	if (In.contains("BaseColor"))
@@ -206,7 +216,8 @@ void UMaterial::SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMate
 	if (Ar.IsSaving())
 	{
 		const UMaterial* Base = Material->GetBaseAsset();
-		BasePath = Base ? Base->GetPath() : FString("DefaultMaterial");
+		BasePath = Base ? Base->GetPath() : FString(Material->MaterialDomain == EMaterialDomain::Decal
+			? "DefaultDecalMaterial" : "DefaultMaterial");
 	}
 	BaseSlot.GetValue() << BasePath;
 
@@ -230,6 +241,12 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 	Super::Serialize(Record);   // "Properties" (리플렉션 프로퍼티. 지금은 없음)
 
 	FArchive& Ar = Record.GetUnderlyingArchive();
+
+	FString DomainName = MaterialDomain == EMaterialDomain::Decal ? "Decal" : "Surface";
+	if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("MaterialDomain", true))
+		Slot.GetValue() << DomainName;
+	if (Ar.IsLoading())
+		MaterialDomain = DomainName == "Decal" ? EMaterialDomain::Decal : EMaterialDomain::Surface;
 
 	Record << SA_VALUE("BaseColor", BaseColor)
 		<< SA_VALUE("UVScrollSpeed", UVScrollSpeed)

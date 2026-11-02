@@ -110,7 +110,7 @@ void FRenderer::UploadPerObjectConstants()
 	for (uint32 Index = 0; Index < Count; ++Index)
 	{
 		FRenderPacket& P = RenderPackets[Index];
-		WriteObjectSlot(Dest, Index, GetPacketWorld(P), GetPacketNormalMatrix(P));
+		WriteObjectSlot(Dest, Index, GetPacketWorld(P), GetPacketNormalMatrix(P), P.Proxy && P.Proxy->ReceivesDecals());
 		P.Slot = Index;
 	}
 
@@ -153,6 +153,7 @@ void FRenderer::DrawStaticGroups()
 
 	UMaterial* BoundMaterial = nullptr;
 	int8 LastReceiveShadow = -1;
+	int8 LastUseSkinning = -1;
 
 	for (const FStaticDrawGroup* Group : StaticGroups)
 	{
@@ -166,13 +167,16 @@ void FRenderer::DrawStaticGroups()
 			const bool bReceiveShadow = Item.Proxy ? Item.Proxy->IsReceiveShadow() : true;
 			const bool bUseSkinning = Item.Proxy ? Item.Proxy->IsUsingSkinning() : false;
 			const int8 CurrentRS = bReceiveShadow ? 1 : 0;
-			const bool bMaterialChanged = (Group->Material != BoundMaterial);
-			const bool bShadowChanged = (CurrentRS != LastReceiveShadow);
+			const int8 CurrentSkinning = bUseSkinning ? 1 : 0;
+			const bool bMaterialChanged = Group->Material != BoundMaterial;
+			const bool bShadowChanged = CurrentRS != LastReceiveShadow;
+			const bool bSkinningChanged = CurrentSkinning != LastUseSkinning;
 
-			if (bMaterialChanged || bShadowChanged)
+			if (bMaterialChanged || bShadowChanged || bSkinningChanged)
 			{
 				BoundMaterial = Group->Material;
 				LastReceiveShadow = CurrentRS;
+				LastUseSkinning = CurrentSkinning;
 				BindMaterial(BoundMaterial, bReceiveShadow, bUseSkinning);
 				if (bMaterialChanged)
 				{
@@ -189,7 +193,7 @@ void FRenderer::DrawStaticGroups()
 			else
 			{
 				RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
-				UpdatePerObjectConstants(Item.Proxy->GetLocalToWorld(), Item.Proxy->GetNormalMatrix());
+				UpdatePerObjectConstants(Item.Proxy->GetLocalToWorld(), Item.Proxy->GetNormalMatrix(), Item.Proxy->ReceivesDecals());
 			}
 			if (Item.Proxy) Item.Proxy->BindSRVs();
 			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
@@ -295,6 +299,7 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 	LastIndexBuffer = nullptr;
 	LastMaterial = nullptr;
 	int8 LastReceiveShadow = -1;
+	int8 LastUseSkinning = -1;
 
 	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 	RenderCommand::BindConstantBuffer(3, LightingCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
@@ -318,7 +323,9 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 		const bool bReceiveShadow = RenderPacket.Proxy ? RenderPacket.Proxy->IsReceiveShadow() : true;
 		const bool bUseSkinning = RenderPacket.Proxy ? RenderPacket.Proxy->IsUsingSkinning() : false;
 		const int8 CurrentRS = bReceiveShadow ? 1 : 0;
-		if (RenderPacket.Material != LastMaterial || CurrentRS != LastReceiveShadow) 
+		const int8 CurrentSkinning = bUseSkinning ? 1 : 0;
+
+		if (RenderPacket.Material != LastMaterial || CurrentRS != LastReceiveShadow || CurrentSkinning != LastUseSkinning)
 		{
 			BindMaterial(RenderPacket.Material, bReceiveShadow, bUseSkinning);
 		}
@@ -347,6 +354,7 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 
 		LastMaterial = RenderPacket.Material;
 		LastReceiveShadow = CurrentRS;
+		LastUseSkinning = CurrentSkinning;
 	}
 }
 
@@ -652,15 +660,17 @@ void FRenderer::UpdatePerObjectConstants(const FRenderPacket& RenderPacket, cons
 	// rp.Transform 과 Camera VP 행렬 곱
 	// 행렬곱의 결과 (MVP Matrix) Constant Buffer 업데이트 필요
 
-	UpdatePerObjectConstants(GetPacketWorld(RenderPacket), GetPacketNormalMatrix(RenderPacket));
+	UpdatePerObjectConstants(GetPacketWorld(RenderPacket), GetPacketNormalMatrix(RenderPacket),
+		RenderPacket.Proxy && RenderPacket.Proxy->ReceivesDecals());
 }
 
-void FRenderer::UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix)
+void FRenderer::UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix,bool bReceivesDecals)
 {
-	FPerObjectConstants Constants;
-
-	Constants.World = World;
-	Constants.NormalMatrix = NormalMatrix;
+	const FPerObjectConstants Constants{
+		.World = World,
+		.NormalMatrix = NormalMatrix,
+		.ReceivesDecals = bReceivesDecals ? 1u : 0u,
+	};
 
 	RenderCommand::UpdateBufferData(PerObjectCB.get(), &Constants);
 }
@@ -837,5 +847,13 @@ void FRenderer::RenderShadowPass(
 
 void FRenderer::BindShadowForShading()
 {
+	ShadowMapManager.BindForShading();
+}
+
+void FRenderer::BindSceneLighting()
+{
+	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+	RenderCommand::BindConstantBuffer(3, LightingCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+	TileLightCulling.BindForShading(LocalLight);
 	ShadowMapManager.BindForShading();
 }

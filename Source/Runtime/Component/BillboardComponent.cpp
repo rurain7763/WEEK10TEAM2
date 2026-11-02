@@ -134,7 +134,8 @@ void UBillboardComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const F
 	}
 
 	FRenderPacket Packet;
-	Packet.Geometry.VertexBuffers[0] = QuadMesh->GetVertexBuffer(0);
+	FVertexBuffer* VertexBuffer = QuadMesh->GetVertexBuffer(0);
+	Packet.Geometry.SetVertexBuffers(&VertexBuffer, 1);
 	Packet.Geometry.IndexBuffer = QuadMesh->GetIndexBuffer(0);
 	Packet.Geometry.StartIndex = 0;
 	Packet.Geometry.IndexCount = Packet.Geometry.IndexBuffer->GetIndexCount();

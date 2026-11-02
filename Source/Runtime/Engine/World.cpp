@@ -17,7 +17,7 @@
 #include "Component/BillboardComponent.h"
 #include "Component/ExponentialHeightFogComponent.h"
 #include "Component/LightComponentBase.h"
-
+#include "Component/DecalComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Asset/LOD/StaticMeshLODSelector.h"
 
@@ -134,6 +134,8 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 			Scene.AddFogInfo(Fog->GetUUID(), Fog->GetFogInfo());
 		else if (ULightComponentBase* Light = Cast<ULightComponentBase>(Component))
 			Scene.AddLight(Light);
+		else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
+			Scene.AddDecal(Decal);
 	}
 
 	// 4. Level->Actors에 등록
@@ -221,6 +223,7 @@ void UWorld::ClearWorld()
 	PhysicsScene.RemoveAllPrimitives();
 	Scene.RemoveAllFogInfo();
 	Scene.RemoveAllLights();
+	Scene.RemoveAllDecals();
 	for (ULevel* Level : Levels)
 	{
 		for (AActor* Actor : Level->Actors)
@@ -395,7 +398,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 					if (SlotDest)
 					{
 						// 칸 VisibleIndex는 이 반복만 쓴다 → 스레드끼리 겹치지 않음
-						WriteObjectSlot(SlotDest, VisibleIndex, Proxy->GetLocalToWorld(), Proxy->GetNormalMatrix());
+						WriteObjectSlot(SlotDest, VisibleIndex, Proxy->GetLocalToWorld(), Proxy->GetNormalMatrix(), Proxy->ReceivesDecals());
 						Slot = VisibleIndex;
 					}
 
@@ -415,7 +418,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 
 						FRenderPacket& Packet = Out.Packets.AddDefaulted_GetRef();   // 조각 전용 배열에 추가
 						Packet.Proxy = Proxy;
-						Packet.Geometry.SetVertexBuffers(Packet.Geometry.VertexBuffers, CachedLOD.VertexBufferCount);
+						Packet.Geometry.SetVertexBuffers(CachedLOD.VertexBuffers, CachedLOD.VertexBufferCount);
 						Packet.Geometry.IndexBuffer = CachedLOD.IndexBuffer;
 						Packet.Material = Section.Material;
 						Packet.Geometry.StartIndex = Section.StartIndex;
@@ -482,13 +485,13 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 					FRenderPacket& Packet = RenderQueue[p];
 					if (Packet.Proxy)
 					{
-						WriteObjectSlot(SlotDest, NextExtraSlot, Packet.Proxy->GetLocalToWorld(), Packet.Proxy->GetNormalMatrix());
+						WriteObjectSlot(SlotDest, NextExtraSlot, Packet.Proxy->GetLocalToWorld(), Packet.Proxy->GetNormalMatrix(), Packet.Proxy->ReceivesDecals());
 					}
 					else
 					{
 						// 프록시 없는 패킷(빌보드 등)은 캐시가 없으므로 여기서 계산한다.
 						const FMatrix& Model = Packet.Model ? *Packet.Model : FMatrix::Identity;
-						WriteObjectSlot(SlotDest, NextExtraSlot, Model, MakeNormalMatrix(Model));
+						WriteObjectSlot(SlotDest, NextExtraSlot, Model, MakeNormalMatrix(Model), false);
 					}
 					Packet.Slot = NextExtraSlot++;
 				}
@@ -615,6 +618,10 @@ bool UWorld::DestroyActor(AActor* Actor)
 		else if (ULightComponentBase* Light = Cast<ULightComponentBase>(Component))
 		{
 			Scene.RemoveLight(Light);
+		}
+		else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
+		{
+			Scene.RemoveDecal(Decal);
 		}
 	}
 
@@ -814,6 +821,8 @@ void UWorld::PostDuplicate(bool bDuplicateForPIE)
 				Scene.AddFogInfo(Fog->GetUUID(), Fog->GetFogInfo());
 			else if (ULightComponentBase* Light = Cast<ULightComponentBase>(Component))
 				Scene.AddLight(Light);
+			else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
+				Scene.AddDecal(Decal);
 		}
 
 		NewActorList.Add(Actor);   // Tick 등록은 BeginPlay에서 함
