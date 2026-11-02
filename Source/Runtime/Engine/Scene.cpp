@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Scene.h"
+#include "Component/DecalComponent.h"
 #include "LightSceneProxy.h"
 #include "Render/ColorWorkflow.h"
 #include <Core/StatOverlay.h>
@@ -83,6 +84,54 @@ void FScene::RemoveAllPrimitives()
 	RenderStateDirtyProxies.Reset();
 	BVH.Clear();
 	bElementListChanged = true;
+}
+
+void FScene::AddDecal(UDecalComponent* Component) {
+	if (!Component || mDecals.Find(Component) != INDEX_NONE) {
+		return;
+	}
+
+	mDecals.Add(Component);
+}
+
+void FScene::RemoveDecal(UDecalComponent* Component) {
+	const int32 Index{ mDecals.Find(Component) };
+	if (Index != INDEX_NONE) {
+		mDecals.RemoveAt(Index);
+	}
+}
+
+void FScene::RemoveAllDecals() {
+	mDecals.Reset();
+}
+
+void FScene::BuildDecalRenderData(TArray<FDecalRenderData>& OutDecals, bool GameView) const {
+	OutDecals.Reset();
+	OutDecals.Reserve(mDecals.Num());
+
+	for (const UDecalComponent* Component : mDecals) {
+		if (GameView && Component->IsHiddenInGame()) {
+			continue;
+		}
+
+		FDecalRenderData Decal{};
+		Decal.mWorldMatrix = Component->GetWorldMatrix();
+		Decal.mDecalSize = Component->GetDecalSize();
+
+		FMatrix ProjectionMatrix{ FMatrix::Identity };
+		ProjectionMatrix[0][0] = 1.0f / Decal.mDecalSize.X;
+		ProjectionMatrix[1][1] = 1.0f / Decal.mDecalSize.Y;
+		ProjectionMatrix[2][2] = 1.0f / Decal.mDecalSize.Z;
+		Decal.mWorldToDecalMatrix = Decal.mWorldMatrix.Inverse() * ProjectionMatrix;
+
+		Decal.mDecalMaterial = Component->GetDecalMaterial();
+		Decal.mDecalColor = Component->GetDecalColor();
+		Decal.mOpacity = Component->GetOpacity();
+		Decal.mSortOrder = Component->GetSortOrder();
+		Decal.mFadeScreenSize = Component->GetFadeScreenSize();
+		Decal.mActive = Component->IsActive();
+		OutDecals.Add(Decal);
+	}
 }
 
 void FScene::AddFogInfo(uint32 Id, const FFogInfo& FogInfo)

@@ -5,6 +5,7 @@
 #include "Component/PrimitiveComponent.h"
 #include "Math/Frustum.h"
 #include "Math/BVH.h"
+#include "Render/DecalRenderData.h"
 #include "Render/FogInfo.h"
 #include "Render/LightInfo.h"
 #include "Render/Renderer.h"
@@ -12,6 +13,7 @@
 
 class FLightSceneProxy;
 class ULightComponentBase;
+class UDecalComponent;
 
 struct FExponentialHeightFogSceneInfo
 {
@@ -26,6 +28,11 @@ public:
 	void RemovePrimitive(UPrimitiveComponent* Component);
 	// 모든 프록시를 한 번에 지운다. 액터를 통째로 지우기 전(ClearWorld)에 불러야 지워진 컴포넌트를 가리키는 프록시가 남지 않는다.
 	void RemoveAllPrimitives();
+
+	void AddDecal(UDecalComponent* Component);
+	void RemoveDecal(UDecalComponent* Component);
+	void RemoveAllDecals();
+	void BuildDecalRenderData(TArray<FDecalRenderData>& OutDecals, bool GameView) const;
 
 	void AddFogInfo(uint32 Id, const FFogInfo& FogInfo);
 	void RemoveFogInfo(uint32 Id);
@@ -89,4 +96,7 @@ public:
 	bool bElementListChanged = false;
 	bool bShadowDirty = true;
 	inline static bool bCacheWholeSceneShadows = true;
+
+private:
+	TArray<UDecalComponent*> mDecals{};
 };

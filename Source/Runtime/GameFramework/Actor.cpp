@@ -503,6 +503,10 @@ UActorComponent* AActor::AddComponent(UClass* ComponentClass, FName Name)
 	Components.Add(NewComponent);
 	NewComponent->InitializeComponent();
 
+	if (UDecalComponent* Decal{ Cast<UDecalComponent>(NewComponent) }; World && Decal) {
+		World->GetScene().AddDecal(Decal);
+	}
+
 	//if (UParticleSubUVComponent* ParticleSubUV = Cast<UParticleSubUVComponent>(NewComponent))
 	//{
 	//    ParticleSubUV->BeginPlay();
@@ -569,6 +573,9 @@ void AActor::DestroyComponent(UActorComponent* Component)
 	else if (ULightComponentBase* Light = Cast<ULightComponentBase>(Component))
 	{
 		World->GetScene().RemoveLight(Light);
+	}
+	else if (UDecalComponent* Decal{ Cast<UDecalComponent>(Component) }; World && Decal) {
+		World->GetScene().RemoveDecal(Decal);
 	}
 	RemoveOwnedComponent(Component);
 	delete Component;

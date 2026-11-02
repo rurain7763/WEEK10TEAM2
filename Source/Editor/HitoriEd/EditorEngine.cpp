@@ -734,7 +734,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 				continue;
 			}
 
-			if (Selection.IsSelected(Owner) || Decal->ShouldAlwaysDrawDebug()) {
+			if (Decal->ShouldAlwaysDrawDebug()) {
 				Decal->DrawDebug(LineBatcher.get());
 			}
 		}
