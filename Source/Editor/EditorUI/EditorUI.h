@@ -35,7 +35,7 @@ public:
 	//탭마다 도킹 스페이스가 생겨서 탭 이름을 띄워야한다.
 	void DrawTabBar(ImGuiDockNodeFlags DockSpaceFlags);
 
-
+	const TArray<TUniquePtr<FEditorTab>>& GetTabs() const { return Tabs; }
 
 private:
 	bool bUseDockSpace = true;
