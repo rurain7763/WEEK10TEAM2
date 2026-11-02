@@ -9,6 +9,7 @@
 #include "GameFramework/Actor/PointLightActor.h"
 #include "GameFramework/Actor/SpotLightActor.h"
 #include "GameFramework/Actor/SkeletalMeshActor.h"
+#include "GameFramework/Actor/DecalActor.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/DefaultPawn.h"
 #include "GameFramework/PlayerStart.h"
@@ -41,8 +42,9 @@ inline constexpr FSpawnableActorType SpawnableActorTypes[] =
 	{ "DirectionalLight",     &ADirectionalLightActor::StaticClass },
 	{ "PointLight",           &APointLightActor::StaticClass },
 	{ "SpotLight",            &ASpotLightActor::StaticClass },
-	{ "Player",            &APlayerActor::StaticClass },
-	{ "Enemy",            &AEnemyActor::StaticClass },
+	{ "Decal",				  &ADecalActor::StaticClass },
+	{ "Player",				  &APlayerActor::StaticClass },
+	{ "Enemy",				  &AEnemyActor::StaticClass },
 	{ "Coin", 				  &ACoin::StaticClass },
 	{ "CoinLauncher",         &ACoinLauncher::StaticClass },
 	{ "CoinRain", 			  &ACoinRain::StaticClass },

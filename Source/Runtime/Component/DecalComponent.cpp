@@ -1,142 +1,295 @@
 #include "EnginePCH.h"
-#include "DecalComponent.h"
+#include "Component/DecalComponent.h"
+#include "Asset/AssetManager.h"
 #include "Engine/DecalSceneProxy.h"
+#include "Engine/Scene.h"
+#include "Render/LineBatcher.h"
+#include "Render/Material.h"
+#include <algorithm>
 #include "GameFramework/Actor.h"
+#include "Engine/World.h"
 
+// 기본 외형 및 틱 설정
 UDecalComponent::UDecalComponent()
 {
-	PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = false;
+    DecalMaterial = UAssetManager::GetAssetByPath<UMaterial>("DefaultDecalMaterial");
 }
 
+// 씬 참조 정리
+UDecalComponent::~UDecalComponent()
+{
+    if (SceneProxy)
+    {
+        SceneProxy->GetScene()->RemoveDecal(this);
+    }
+}
+
+void UDecalComponent::InitializeComponent()
+{
+    Super::InitializeComponent();
+    GetOwner()->GetWorld()->GetScene().AddDecal(this);
+}
+
+// 게임 시간 재생 시작
+void UDecalComponent::BeginPlay()
+{
+    Super::BeginPlay();
+    bHasBegunPlay = true;
+    RestartFade();
+}
+
+// 재생 상태 종료
+void UDecalComponent::EndPlay()
+{
+    bHasBegunPlay = false;
+    ResetFadeRuntime();
+    Super::EndPlay();
+}
+
+// 저장 설정 복구
 void UDecalComponent::PostLoad()
 {
-	Proxy->UpdateMaterial();
-	Proxy->UpdateTransform();
-	Proxy->UpdateOpacity();
-	Proxy->UpdateFadeAlpha();
+    Super::PostLoad();
+    bHasBegunPlay = false;
+    ClampSettings();
+    ResetFadeRuntime();
 }
 
+// 복제 설정 복구
+void UDecalComponent::PostDuplicate(bool bDuplicateForPIE)
+{
+    Super::PostDuplicate(bDuplicateForPIE);
+    bHasBegunPlay = false;
+    ClampSettings();
+    ResetFadeRuntime();
+}
+
+// 게임 DeltaTime 기반 페이드 갱신
 void UDecalComponent::TickComponent(float DeltaTime)
 {
-	Super::TickComponent(DeltaTime);
+    Super::TickComponent(DeltaTime);
+    if (!bFadeRunning)
+    {
+        return;
+    }
 
-	float FadeIn = 1.f;
-	float FadeOut = 1.f;
-	if (FadeInDuration > 0.f)
-	{
-		FadeIn = (ElapsedTime - FadeInStartDelay) / FadeInDuration;
-	}
+    FadeElapsedTime += std::max(DeltaTime, 0.0f);
+    float InAlpha = 1.0f;
+    if (FadeElapsedTime < FadeInStartDelay)
+    {
+        InAlpha = 0.0f;
+    }
+    else if (FadeInDuration > 0.0f)
+    {
+        InAlpha = FMath::Clamp((FadeElapsedTime - FadeInStartDelay) / FadeInDuration, 0.0f, 1.0f);
+    }
 
-	if (FadeDuration > 0.f)
-	{
-		FadeOut = 1.0f - ((ElapsedTime - FadeStartDelay) / FadeDuration);
-	}
+    const float OutAlpha = FadeDuration > 0.0f
+        ? FMath::Clamp(1.0f - std::max(FadeElapsedTime - FadeStartDelay, 0.0f) / FadeDuration, 0.0f, 1.0f)
+        : 1.0f;
 
-	FadeAlpha = FMath::Clamp(FMath::Min(FadeIn, FadeOut), 0.f, 1.f);
-	ElapsedTime += DeltaTime;
+    const float NewAlpha = InAlpha * OutAlpha;
+    if (NewAlpha != FadeAlpha)
+    {
+        FadeAlpha = NewAlpha;
+        MarkRenderStateDirty();
+    }
 
-	Proxy->UpdateFadeAlpha();
+    const bool bOutFinished = FadeDuration > 0.0f && FadeElapsedTime >= FadeStartDelay + FadeDuration;
+    const bool bInFinished = FadeElapsedTime >= FadeInStartDelay + FadeInDuration;
 
-	if (!IsPersistent() && bDestroyOwnerAfterFade && ElapsedTime >= FadeStartDelay + FadeDuration)
-	{
-		GetOwner()->Destroy();
-	}
+    if (bOutFinished || (FadeDuration <= 0.0f && bInFinished))
+    {
+        bFadeRunning = false;
+        PrimaryComponentTick.bStartWithTickEnabled = false;
+        PrimaryComponentTick.SetTickFunctionEnable(false);
+
+        // 페이드 아웃 완료 이후의 소유 액터 파괴 예약
+        if (bOutFinished && bDestroyOwnerAfterFade)
+        {
+            GetOwner()->Destroy();
+        }
+    }
 }
 
-void UDecalComponent::SetDecalMaterial(UMaterial* InMaterial)
-{
-	DecalMaterial = InMaterial;
-
-	if (Proxy)
-	{
-		Proxy->UpdateMaterial();
-	}
-}
-
-UMaterial* UDecalComponent::GetDecalMaterial() const
-{
-	return DecalMaterial;
-}
-
-void UDecalComponent::SetOpacity(float InOpacity)
-{
-	Opacity = InOpacity;
-
-	if (Proxy)
-	{
-		Proxy->UpdateOpacity();
-	}
-}
-
-float UDecalComponent::GetOpacity() const
-{
-	return Opacity;
-}
-
-float UDecalComponent::GetFadeAlpha() const
-{
-	return FadeAlpha;
-}
-
-void UDecalComponent::OnTransformDirty()
-{
-	if (!Proxy)
-	{
-		return;
-	}
-
-	Proxy->UpdateTransform();
-}
-
+// 편집 설정 반영
 void UDecalComponent::PostEditChangeProperty(const FProperty& Property)
 {
-	Super::PostEditChangeProperty(Property);
-
-	if (Property.Name == "DecalMaterial")
-	{
-		SetDecalMaterial(DecalMaterial);
-	}
-	else if (Property.Name == "Opacity")
-	{
-		SetOpacity(Opacity);
-	}
+    Super::PostEditChangeProperty(Property);
+    ClampSettings();
+    if (Property.Name == "FadeInStartDelay" || Property.Name == "FadeInDuration" ||
+        Property.Name == "FadeStartDelay" || Property.Name == "FadeDuration")
+    {
+        RestartFade();
+    }
+    MarkRenderStateDirty();
 }
 
-FDecalSceneProxy* UDecalComponent::CreateSceneProxy(FScene* InScene)
+// 데칼 도메인 검증
+bool UDecalComponent::SetDecalMaterial(UMaterial* InMaterial)
 {
-	if (Proxy && Proxy->GetScene() == InScene)
-	{
-		return Proxy;
-	}
+    if (InMaterial && InMaterial->MaterialDomain != EMaterialDomain::Decal)
+    {
+        HTR_LOG(Warning, "Decal material requires Decal domain");
+        return false;
+    }
 
-	Proxy = new FDecalSceneProxy(InScene, this);
-	Proxy->UpdateMaterial();
-	Proxy->UpdateTransform();
-	Proxy->UpdateOpacity();
-	Proxy->UpdateFadeAlpha();
-
-	return Proxy;
+    DecalMaterial = InMaterial;
+    MarkRenderStateDirty();
+    return true;
 }
 
-void UDecalComponent::DestroySceneProxy()
+// 페이드 인 설정 및 공통 시간 재시작
+void UDecalComponent::SetFadeIn(float Delay, float Duration)
 {
-	if (Proxy)
-	{
-		delete Proxy;
-		Proxy = nullptr;
-	}
+    FadeInStartDelay = Delay;
+    FadeInDuration = Duration;
+    ClampSettings();
+    RestartFade();
 }
 
+// 페이드 아웃 설정 및 공통 시간 재시작
+void UDecalComponent::SetFadeOut(float Delay, float Duration)
+{
+    FadeStartDelay = Delay;
+    FadeDuration = Duration;
+    ClampSettings();
+    RestartFade();
+}
+
+// 지속 표시 설정
+void UDecalComponent::ClearFade()
+{
+    FadeInStartDelay = FadeInDuration = 0.0f;
+    FadeStartDelay = FadeDuration = 0.0f;
+    RestartFade();
+}
+
+// 편집 상태의 알파 복구
+void UDecalComponent::ResetFadeRuntime()
+{
+    FadeElapsedTime = 0.0f;
+    FadeAlpha = 1.0f;
+    bFadeRunning = false;
+    PrimaryComponentTick.bStartWithTickEnabled = false;
+    PrimaryComponentTick.SetTickFunctionEnable(false);
+    MarkRenderStateDirty();
+}
+
+// 플레이 기준의 공통 시간 재시작
+void UDecalComponent::RestartFade()
+{
+    ResetFadeRuntime();
+    if (!bHasBegunPlay)
+    {
+        return;
+    }
+
+    const bool bHasFadeIn = FadeInStartDelay > 0.0f || FadeInDuration > 0.0f;
+    FadeAlpha = bHasFadeIn ? 0.0f : 1.0f;
+    bFadeRunning = bHasFadeIn || FadeDuration > 0.0f;
+    PrimaryComponentTick.bStartWithTickEnabled = bFadeRunning;
+    PrimaryComponentTick.SetTickFunctionEnable(bFadeRunning);
+    MarkRenderStateDirty();
+}
+
+// 설정 범위 제한
+void UDecalComponent::ClampSettings()
+{
+    DecalSize.X = std::max(DecalSize.X, 0.001f);
+    DecalSize.Y = std::max(DecalSize.Y, 0.001f);
+    DecalSize.Z = std::max(DecalSize.Z, 0.001f);
+    DecalColor.A = FMath::Clamp(DecalColor.A, 0.0f, 1.0f);
+    AngleFadeStart = FMath::Clamp(AngleFadeStart, 0.0f, 89.9f);
+    AngleFadeEnd = FMath::Clamp(AngleFadeEnd, AngleFadeStart + 0.1f, 90.0f);
+    FadeInStartDelay = std::max(FadeInStartDelay, 0.0f);
+    FadeInDuration = std::max(FadeInDuration, 0.0f);
+    FadeStartDelay = std::max(FadeStartDelay, 0.0f);
+    FadeDuration = std::max(FadeDuration, 0.0f);
+}
+
+// 전체 크기 기준의 로컬 경계
+FBox UDecalComponent::CalcLocalBounds() const
+{
+    const FVector Half = DecalSize * 0.5f;
+    return FBox{ Half * -1.0f, Half };
+}
+
+// 투영 볼륨 및 전방 표시
 void UDecalComponent::DrawDebug(FLineBatcher* LineBatcher) const
 {
-	FBox LocalBox;
-	LocalBox.Min = FVector(-0.5f, -0.5f, -0.5f);
-	LocalBox.Max = FVector(0.5f, 0.5f, 0.5f);
+    if (!LineBatcher)
+    {
+        return;
+    }
 
-	LineBatcher->AddOrientedBox(LocalBox, GetWorldMatrix(), FVector4(1.f, 0.f, 0.f, 1.f));
+    const FMatrix World = GetWorldMatrix();
+    const FVector4 Color(0.15f, 0.8f, 1.0f, 1.0f);
+    LineBatcher->AddOrientedBox(CalcLocalBounds(), World, Color);
 }
 
-FDecalSceneProxy* UDecalComponent::GetSceneProxy() const
+// 프록시 갱신 예약
+void UDecalComponent::MarkRenderStateDirty()
 {
-	return Proxy;
+    if (SceneProxy)
+    {
+        SceneProxy->GetScene()->MarkDecalDirty(SceneProxy);
+    }
+}
+
+// JSON 외형 참조 및 표시 설정 저장
+void UDecalComponent::Serialize(json& Handle, bool bIsLoading)
+{
+    Super::Serialize(Handle, bIsLoading);
+    if (bIsLoading)
+    {
+        if (Handle.contains("DecalMaterial"))
+        {
+            SetDecalMaterial(Handle["DecalMaterial"].is_null() ? nullptr : UMaterial::LoadMaterial(Handle["DecalMaterial"]));
+        }
+        if (Handle.contains("Active"))
+        {
+            SetActive(Handle["Active"].get<bool>());
+        }
+        if (Handle.contains("HiddenInGame"))
+        {
+            SetHiddenInGame(Handle["HiddenInGame"].get<bool>());
+        }
+        ClampSettings();
+        ResetFadeRuntime();
+        return;
+    }
+
+    Handle["DecalMaterial"] = DecalMaterial ? UMaterial::SaveMaterial(DecalMaterial) : json(nullptr);
+    Handle["Active"] = IsActive();
+    Handle["HiddenInGame"] = IsHiddenInGame();
+}
+
+// 구조화 외형 참조 및 표시 설정 저장
+void UDecalComponent::Serialize(FStructuredArchive::FRecord Record)
+{
+    Super::Serialize(Record);
+    UMaterial* Loaded = DecalMaterial;
+    UMaterial::SerializeMaterialReference(Record.EnterField("DecalMaterial"), Loaded);
+    bool bActive = IsActive();
+    bool bHidden = IsHiddenInGame();
+    if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("Active", true))
+    {
+        Slot.GetValue() << bActive;
+    }
+    if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("HiddenInGame", true))
+    {
+        Slot.GetValue() << bHidden;
+    }
+
+    if (Record.GetUnderlyingArchive().IsLoading())
+    {
+        SetDecalMaterial(Loaded);
+        SetActive(bActive);
+        SetHiddenInGame(bHidden);
+        ClampSettings();
+        ResetFadeRuntime();
+    }
 }

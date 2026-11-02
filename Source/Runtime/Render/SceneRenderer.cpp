@@ -20,6 +20,7 @@
 #include "UObject/UObjectIterator.h"
 #include "Render/DecalRenderer.h"
 #include "Core/Stats/LightweightStats.h"
+#include "Core/StatOverlay.h"
 
 DECLARE_CYCLE_STAT("Decal Draw Time", STAT_DecalDrawTime);
 
@@ -56,6 +57,9 @@ void FSceneRenderer::Init(FRenderer* InRenderer)
 void FSceneRenderer::BeginFrame()
 {
 	bShadowAtlasRenderedThisFrame = false;
+
+	// 프레임 전체 뷰의 데칼 통계 초기화
+	FStatOverlay::SetDecalStats(FDecalStats{});
 }
 
 void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FSceneRenderSettings& Settings,
@@ -268,7 +272,8 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 	RenderCommand::EndRenderPass();
 }
 
-void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets)
+void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings,
+	const UWorld& ViewWorld, const FSceneRenderTargets& Targets)
 {
 	FTexture2D* ObjectMaskTexture = Targets.ObjectMask.get();
 	FTexture2D* DepthTexture = Targets.Depth.get();
@@ -286,21 +291,26 @@ void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRe
 
 	RenderCommand::BeginRenderPass(PassInfo);
 
-	FDecalStats DecalStats;
-	if (Settings.bDrawDecals)
+	// 시각화 및 표시 비활성 뷰에서도 이전 프레임의 데칼 색상 제거
+	FDecalStats DecalStats = FStatOverlay::GetDecalStats();
+	const EViewMode ViewMode = SceneView.RenderMode.ViewMode;
+	if (Settings.bDrawDecals && Settings.bDrawPrimitives && !Settings.bDepthView && !Settings.bVisualizeCascades
+		&& !Settings.bVisualizeTileLightCount && (ViewMode == EViewMode::Lit || ViewMode == EViewMode::Unlit))
 	{
-		SCOPE_CYCLE_COUNTER(STAT_DecalDrawTime);
-		DecalRenderer->Render(ViewWorld.GetScene().GetDecals(), SceneView.ViewProjection, DepthTexture, ObjectMaskTexture, DecalStats.DrawCount);
-	}
+		uint32 DrawCount = 0;
 
-	const FCycleStatData* CS = FStatRegistry::Find(STAT_DecalDrawTime);
-	if (CS)
-	{
-		DecalStats.DrawTime = DecalStats.DrawCount ? CS->GetLastMs() : 0.f;
+		// 현재 뷰의 CPU 제출 시간 측정
+		FScopeCycleCounter DecalTimer(STAT_DecalDrawTime, true);
+		DecalRenderer->Render(ViewWorld.GetScene().Decals, SceneView.ViewProjection, DepthTexture, ObjectMaskTexture,
+			DrawCount, ViewWorld.GetWorldType() != EWorldType::Editor);
+		const uint64 DrawCycles = DecalTimer.Finish();
+
+		// 동일 프레임의 뷰별 제출 수와 CPU 처리 시간 합산
+		DecalStats.DrawCount += DrawCount;
+		DecalStats.DrawTime += static_cast<float>(FPlatformTime::ToMilliseconds64(DrawCycles));
 	}
 
 	RenderCommand::UnbindShaderResource(0, EShaderBindFlagBits::Pixel);
-
 	RenderCommand::EndRenderPass();
 
 	FStatOverlay::SetDecalStats(DecalStats);

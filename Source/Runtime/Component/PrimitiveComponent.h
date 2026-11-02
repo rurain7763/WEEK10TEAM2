@@ -32,12 +32,12 @@ class UPrimitiveComponent :public USceneComponent
 		PROPERTY(bVisible)
 		PROPERTY(bCastShadow)
 		PROPERTY(bReceiveShadow)
-		PROPERTY(bReceiveDecals)
 		PROPERTY(bGenerateOverlapEvents)
 		PROPERTY(bBlockComponet)
 		PROPERTY(ShowBeginOverlapLog)
 		PROPERTY(ShowEndOverlapLog)
 		PROPERTY(ShowHitLog)
+		PROPERTY(bReceivesDecals)
 	REFLECT_END()
 
 public:
@@ -83,18 +83,15 @@ public:
 		bReceiveShadow = bInReceiveShadow;
 		MarkRenderStateDirty();
 	}
-
-	bool IsReceiveDecals() const
+	bool ReceivesDecals() const
 	{
-		return bReceiveDecals;
+		return bReceivesDecals;
 	}
-
-	void SetReceiveDecals(bool EnableReceiveDecal)
+	void SetReceivesDecals(bool bInReceivesDecals)
 	{
-		bReceiveDecals = EnableReceiveDecal;
+		bReceivesDecals = bInReceivesDecals;
 		MarkRenderStateDirty();
 	}
-
 	virtual void SetHiddenInGame(bool bInHidden) override
 	{
 		Super::SetHiddenInGame(bInHidden);
@@ -153,8 +150,7 @@ protected:
 	bool bVisible = true;
 	bool bCastShadow = true;
 	bool bReceiveShadow = true;
-	bool bReceiveDecals = true;
-
+	bool bReceivesDecals = true;
 	bool bGenerateOverlapEvents = true;
 	bool bBlockComponet = false;
 

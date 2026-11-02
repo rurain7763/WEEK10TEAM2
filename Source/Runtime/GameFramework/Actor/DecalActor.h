@@ -1,23 +1,20 @@
 #pragma once
+#pragma once
 
 #include "GameFramework/Actor.h"
-#include "Component/BillboardComponent.h"
-#include "Component/DecalComponent.h"
+#include "Core/ResourcePaths.h"
 
+class UDecalComponent;
+class UBillboardComponent;
+
+// 데칼 컴포넌트 및 에디터 표식 조립
 class ADecalActor : public AActor
 {
-	DECLARE_CLASS(ADecalActor, AActor)
+    DECLARE_CLASS(ADecalActor, AActor)
 
 public:
-	ADecalActor();
-	virtual ~ADecalActor() override = default;
-
-	UDecalComponent* GetDecalComponent() const
-	{
-		return DecalComponent;
-	}
-
-private:
-	UDecalComponent* DecalComponent = nullptr;
-	UBillboardComponent* BillboardComponent = nullptr;
+    ADecalActor();
+    ~ADecalActor() override = default;
+    UDecalComponent* GetDecalComponent() const;
+    UBillboardComponent* GetBillboardComponent() const;
 };

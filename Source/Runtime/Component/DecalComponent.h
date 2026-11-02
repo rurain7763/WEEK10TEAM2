@@ -1,71 +1,136 @@
 #pragma once
 
-#include "SceneComponent.h"
-#include "Render/Material.h"
-#include "Render/LineBatcher.h"
+#include "Component/SceneComponent.h"
+#include "Math/Color.h"
 
-class FScene;
+class UMaterial;
 class FDecalSceneProxy;
+class FLineBatcher;
 
 class UDecalComponent : public USceneComponent
 {
-	DECLARE_CLASS(UDecalComponent, USceneComponent)
+    DECLARE_CLASS(UDecalComponent, USceneComponent)
 
-	REFLECT_START(ClassName)
-		PROPERTY(DecalMaterial)
-		PROPERTY(Opacity)
-		PROPERTY(FadeInStartDelay)
-		PROPERTY(FadeInDuration)
-		PROPERTY(FadeStartDelay)
-		PROPERTY(FadeDuration)
-		PROPERTY(bDestroyOwnerAfterFade)
-	REFLECT_END()
+    REFLECT_START(UDecalComponent)
+        PROPERTY(DecalSize)
+        PROPERTY(DecalColor)
+        PROPERTY(SortOrder)
+        PROPERTY(AngleFadeStart)
+        PROPERTY(AngleFadeEnd)
+        PROPERTY(FadeInStartDelay)
+        PROPERTY(FadeInDuration)
+        PROPERTY(FadeStartDelay)
+        PROPERTY(FadeDuration)
+        PROPERTY(bDestroyOwnerAfterFade)
+        REFLECT_END()
 
 public:
-	UDecalComponent();
-	virtual ~UDecalComponent() = default;
+    // 수명주기 갱신
+    UDecalComponent();
+    ~UDecalComponent() override;
+    void InitializeComponent() override;
+    void BeginPlay() override;
+    void EndPlay() override;
+    void TickComponent(float DeltaTime) override;
+    void PostLoad() override;
+    void PostDuplicate(bool bDuplicateForPIE) override;
+    void PostEditChangeProperty(const FProperty& Property) override;
+    void OnTransformDirty() override
+    {
+        Super::OnTransformDirty();
+        MarkRenderStateDirty();
+    }
 
-	virtual void PostLoad() override;
+    // 투영 및 외형 설정
+    UMaterial* GetDecalMaterial() const { return DecalMaterial; }
+    bool SetDecalMaterial(UMaterial* InMaterial);
+    const FVector& GetDecalSize() const { return DecalSize; }
+    void SetDecalSize(const FVector& Value)
+    {
+        DecalSize = Value;
+        ClampSettings();
+        MarkRenderStateDirty();
+    }
+    const FLinearColor& GetDecalColor() const { return DecalColor; }
+    void SetDecalColor(const FLinearColor& Value)
+    {
+        DecalColor = Value;
+        ClampSettings();
+        MarkRenderStateDirty();
+    }
+    int32 GetSortOrder() const { return SortOrder; }
+    void SetSortOrder(int32 Value)
+    {
+        SortOrder = Value;
+        MarkRenderStateDirty();
+    }
+    float GetAngleFadeStart() const { return AngleFadeStart; }
+    float GetAngleFadeEnd() const { return AngleFadeEnd; }
+    void SetAngleFadeStart(float Value)
+    {
+        AngleFadeStart = Value;
+        ClampSettings();
+        MarkRenderStateDirty();
+    }
+    void SetAngleFadeEnd(float Value)
+    {
+        AngleFadeEnd = Value;
+        ClampSettings();
+        MarkRenderStateDirty();
+    }
 
-	virtual void TickComponent(float DeltaTime) override;
+    // 공통 시간 기반 페이드 설정
+    float GetFadeInStartDelay() const { return FadeInStartDelay; }
+    float GetFadeInDuration() const { return FadeInDuration; }
+    float GetFadeStartDelay() const { return FadeStartDelay; }
+    float GetFadeDuration() const { return FadeDuration; }
+    float GetFadeAlpha() const { return FadeAlpha; }
+    void SetFadeInStartDelay(float Value) { SetFadeIn(Value, FadeInDuration); }
+    void SetFadeInDuration(float Value) { SetFadeIn(FadeInStartDelay, Value); }
+    void SetFadeStartDelay(float Value) { SetFadeOut(Value, FadeDuration); }
+    void SetFadeDuration(float Value) { SetFadeOut(FadeStartDelay, Value); }
+    void SetFadeIn(float Delay, float Duration);
+    void SetFadeOut(float Delay, float Duration);
+    void ClearFade();
 
-	void SetDecalMaterial(UMaterial* InMaterial);
+    // 경계 및 프록시 갱신
+    FBox CalcLocalBounds() const override;
+    void DrawDebug(FLineBatcher* LineBatcher) const;
+    void MarkRenderStateDirty();
 
-	UMaterial* GetDecalMaterial() const;
+    // 외형 참조 단일 직렬화
+    using Super::Serialize;
+    void Serialize(json& Handle, bool bIsLoading) override;
+    void Serialize(FStructuredArchive::FRecord Record) override;
 
-	void SetOpacity(float InOpacity);
-
-	float GetOpacity() const;
-	float GetFadeAlpha() const;
-
-	void OnTransformDirty() override;
-	void PostEditChangeProperty(const FProperty& Property) override;
-
-	FDecalSceneProxy* GetSceneProxy() const;
-
-	FDecalSceneProxy* CreateSceneProxy(FScene* InScene);
-
-	void DestroySceneProxy();
-
-	void DrawDebug(FLineBatcher* LineBatcher) const;
-	
-	inline bool IsPersistent() const
-	{
-		return FadeStartDelay <= 0.f && FadeDuration <= 0.f;
-	}
+    // 씬 소유 프록시의 비소유 참조
+    FDecalSceneProxy* SceneProxy = nullptr;
 
 private:
-	FDecalSceneProxy* Proxy = nullptr;
+    void ClampSettings();
+    void ResetFadeRuntime();
+    void RestartFade();
 
-	UMaterial* DecalMaterial = nullptr;
-	float Opacity = 1.0f;
+    // 별도 참조 직렬화 대상
+    UMaterial* DecalMaterial = nullptr;
 
-	float FadeInStartDelay = 0.f;
-	float FadeInDuration = 0.f;
-	float FadeStartDelay = 0.f;
-	float FadeDuration = 0.f;
-	bool bDestroyOwnerAfterFade = true;
+    // 전체 로컬 크기 및 투영 설정
+    FVector DecalSize = FVector(1.0f, 2.0f, 2.0f);
+    FLinearColor DecalColor = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    int32 SortOrder = 0;
+    float AngleFadeStart = 60.0f;
+    float AngleFadeEnd = 85.0f;
+    float FadeInStartDelay = 0.0f;
+    float FadeInDuration = 0.0f;
+    float FadeStartDelay = 0.0f;
+    float FadeDuration = 0.0f;
 
-	float ElapsedTime = 0.f;
-	float FadeAlpha = 1.f;
+    // 페이드 아웃 완료 이후의 소유 액터 삭제 설정
+    bool bDestroyOwnerAfterFade = true;
+
+    // 비직렬화 재생 상태
+    float FadeElapsedTime = 0.0f;
+    float FadeAlpha = 1.0f;
+    bool bFadeRunning = false;
+    bool bHasBegunPlay = false;
 };

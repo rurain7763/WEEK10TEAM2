@@ -18,7 +18,7 @@
 #include "Component/BillboardComponent.h"
 #include "Component/ExponentialHeightFogComponent.h"
 #include "Component/LightComponentBase.h"
-
+#include "Component/DecalComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Asset/LOD/StaticMeshLODSelector.h"
 
@@ -629,6 +629,10 @@ bool UWorld::DestroyActor(AActor* Actor)
 		else if (ULightComponentBase* Light = Cast<ULightComponentBase>(Component))
 		{
 			Scene.RemoveLight(Light);
+		}
+		else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
+		{
+			Scene.RemoveDecal(Decal);
 		}
 	}
 

@@ -68,6 +68,7 @@ public:
 	// View 활성 상태 반영 및 Viewport의 출력 크기별 렌더 타깃 준비
 	void SetView(int32 ViewIndex, bool bActive);
 
+
 	FVector2 GetContentSize() const { return {ContentSize.x, ContentSize.y}; }
 	FVector2 GetLocalMousePosition() const;
 	bool IsHovered() const;

@@ -16,6 +16,8 @@ public:
 
 	virtual void PostLoad() override;
 
+	virtual void PostDuplicate(bool bDuplicateForPIE) override;
+
 	void SetSkeletalMesh(USkeletalMesh* InMesh);
 
 	void UpdateBoneMatrices();

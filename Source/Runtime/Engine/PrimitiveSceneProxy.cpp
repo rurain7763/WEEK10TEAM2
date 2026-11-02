@@ -58,6 +58,7 @@ void FPrimitiveSceneProxy::UpdateRenderState()
     bVisible = Component->IsVisible();
     bCastShadow = Component->IsCastShadow();
     bReceiveShadow = Component->IsReceiveShadow();
+    bReceivesDecals = Component->ReceivesDecals();
     bHiddenInGame = Component->IsHiddenInGame();
 
     ObjectMask = 0;
@@ -71,7 +72,7 @@ void FPrimitiveSceneProxy::UpdateRenderState()
         ObjectMask |= OM_ReceiveShadow;
     }
 
-    if (Component->IsReceiveDecals())
+    if (bReceivesDecals)
     {
         ObjectMask |= OM_ReceiveDecals;
     }
