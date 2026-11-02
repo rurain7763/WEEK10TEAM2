@@ -150,7 +150,7 @@ void FEditorViewportClient::UpdateInput(FViewportInput& Input, const FRect& Rect
 {
     constexpr float PerspectiveWheelSpeed = 0.1f;
     FCameraMoveInput MoveInput{};
-    const bool bCameraCaptured = Input.bCameraCaptured;
+    const bool bCameraCaptured = FInputSystem::IsMouseDown(EMouseButton::Right) && Input.bCaptured;
     const int WheelDelta = Input.WheelDelta;
     // 우클릭으로 카메라를 조작하는 동안 휠은 줌 대신 이동 속도를 배율로 바꾼다.
     if (bCameraCaptured && WheelDelta != 0)

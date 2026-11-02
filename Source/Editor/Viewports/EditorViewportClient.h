@@ -3,10 +3,13 @@
 #include "Editor/Viewports/ViewportClient.h"
 #include "Editor/Viewports/ViewportTypes.h"
 
-// 편집 View 하나의 카메라와 프리셋을 소유한다. View 선택과 Capture는 Adapter가 맡는다.
+// 편집 View 하나의 카메라와 프리셋을 소유한다. View 선택과 Capture는 View를 담은 패널이 맡는다.
 class FEditorViewportClient : public FViewportClient
 {
 public:
+    // 편집할 월드를 지정한다. 레벨 View는 EditorWorld, Preview View는 그 탭의 Preview 월드다.
+    void SetWorld(UWorld* InWorld) { World = InWorld; }
+    UWorld* GetWorld() const override { return World; }
     const FViewCamera& GetCamera() const override { return Camera; }
 
     // 기본 View 구성에서 카메라와 프리셋을 그대로 지정한다.
@@ -29,6 +32,7 @@ public:
     void OnRectChanged(const FRect& Rect) override;
 
 private:
+    UWorld* World = nullptr; // 비소유
     FViewCamera Camera{};
     EMultipleViewportsCameraPreset Preset = EMultipleViewportsCameraPreset::Perspective;
 };

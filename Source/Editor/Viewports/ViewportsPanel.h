@@ -64,17 +64,8 @@ public:
 	// 활성 View의 패널 로컬 마우스 좌표를 역투영해 Ray로 반환한다. 마우스가 다른 View 위면 false다.
 	bool TryGetActiveViewRay(FVector2 LocalMousePosition, FRay& OutRay) const;
 
-	// 그리기 전에 View의 활성 상태를 반영하고, 크기가 바뀌었으면 렌더 타깃을 다시 만든다.
+	// 그리기 전에 View의 활성 상태를 반영하고, Viewport가 렌더 타깃을 출력 크기에 맞추게 한다.
 	void SetView(int32 ViewIndex, bool bActive);
-	// 화면 표시용(sRGB) 렌더 정보. 후처리 이후의 FXAA·Overlay가 그린다.
-	const FRenderingInfo& GetRenderingInfo(int32 ViewIndex) const;
-	// 씬(Linear, float) 렌더 정보. 불투명·반투명·안개가 그린다.
-	const FRenderingInfo& GetSceneRenderingInfo(int32 ViewIndex) const;
-	// 씬용·표시용 렌더 정보를 같은 깊이 타깃으로 구성한다. PIE 창 타깃도 같은 구성을 쓴다.
-	static void BuildViewRenderingInfos(FRenderingInfo& OutSceneInfo, FRenderingInfo& OutViewInfo,
-		FTexture2D* SceneColor, FTexture2D* ViewColor, FTexture2D* Depth, uint32 Width, uint32 Height);
-	// FXAA 결과를 임시로 받는 View별 텍스처. ColorTarget과 크기·포맷이 같다.
-	FTexture2D* GetFxaaTarget(int32 ViewIndex) const;
 
 	FVector2 GetContentSize() const { return {ContentSize.x, ContentSize.y}; }
 	FVector2 GetLocalMousePosition() const;
@@ -93,23 +84,12 @@ private:
 	FGizmo* Gizmo = nullptr;
 	struct FViewSlot
 	{
-		// View 하나의 Viewport·활성 상태·Color/Depth 타깃과 렌더 정보를 담는다.
+		// View 하나의 Viewport와 이번 프레임 활성 상태. 렌더 타깃은 Viewport가 소유한다.
 		FViewport Viewport;
 		bool bActive = false;
-		uint32 Width = 0;
-		uint32 Height = 0;
-		// 씬은 Linear로 SceneColorTarget(float)에 그리고, 인코딩한 결과를 ColorTarget(sRGB 8비트)에 담아 화면에 표시한다
-		TUniquePtr<FTexture2D> SceneColorTarget;
-		TUniquePtr<FTexture2D> ColorTarget;
-		TUniquePtr<FTexture2D> DepthTarget;
-		TUniquePtr<FTexture2D> FxaaTarget;
-		FRenderingInfo SceneRenderingInfo{};	// SceneColorTarget + DepthTarget
-		FRenderingInfo RenderingInfo{};			// ColorTarget + DepthTarget
 	};
 
-	// Rect 크기가 바뀐 Slot의 Color/Depth Texture와 렌더 정보를 다시 만든다.
-	void ResizeSlot(FViewSlot& Slot, uint32 Width, uint32 Height);
-	// ViewRects를 바꾼 뒤 각 Viewport에 같은 Rect를 넣는다.
+	// ViewRects를 바꾼 뒤 각 Viewport에 같은 크기를 넣는다.
 	void SyncViewportRects();
 	// 콘솔 stat 명령으로 켜진 항목을 해당 View의 좌상단에 겹쳐 그린다.
 	void DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMin) const;

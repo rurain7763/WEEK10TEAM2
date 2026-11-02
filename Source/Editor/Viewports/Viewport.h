@@ -6,8 +6,10 @@
 #include "Math/Frustum.h"
 #include "Math/Matrix.h"
 #include "Render/ViewMode.h"
+#include "Render/SceneRenderTargets.h"
 
-// 화면의 View 하나. 배치된 Rect와 표시 모드를 갖고, 어느 Client의 카메라로 그릴지 고른다.
+// 화면의 View 하나. 출력 크기·렌더 타깃·표시 모드를 갖고, 어느 Client의 카메라로 그릴지 고른다.
+// 화면 안의 배치(위치)는 이 View를 담은 패널·창이 맡는다. 출력 크기만 넘겨받는다.
 // 편집 Client는 계속 보관하고, PIE 중에는 Game Client가 대신 그린다(언리얼의 PIE 뷰포트 전환과 같다).
 class FViewport
 {
@@ -15,8 +17,8 @@ public:
     void SetEditorClient(TUniquePtr<FEditorViewportClient> Client) { EditorClient = std::move(Client); }
     FEditorViewportClient* GetEditorClient() const { return EditorClient.get(); }
 
-    // Game Client가 없으면 만들고 반환한다. 이후 이 View는 Game Client의 카메라로 그린다.
-    FGameViewportClient& BeginPlay();
+    // 이 View를 Game Client의 카메라로 그린다. 편집 Client는 그대로 보관한다.
+    void BeginPlay(TUniquePtr<FGameViewportClient> Client) { GameClient = std::move(Client); }
     // Game Client를 지우고 편집 Client로 되돌린다.
     void EndPlay() { GameClient.reset(); }
     FGameViewportClient* GetGameClient() const { return GameClient.get(); }
@@ -24,9 +26,30 @@ public:
     // 지금 이 View를 그리는 Client. Game Client가 있으면 그쪽이다.
     FViewportClient* GetActiveClient() const;
 
-    // Adapter가 레이아웃을 계산할 때마다 갱신한다.
-    void SetRect(const FRect& InRect) { Rect = InRect; }
-    const FRect& GetRect() const { return Rect; }
+    // 담은 패널·창이 레이아웃을 계산할 때마다 갱신한다. 크기가 0이면 숨김이며 렌더 타깃은 유지한다.
+    void SetOutputSize(FVector2 InSize) { OutputSize = InSize; }
+    FVector2 GetOutputSize() const { return OutputSize; }
+    bool IsVisible() const { return OutputSize.X > 0.0f && OutputSize.Y > 0.0f; }
+    // 원점 기준 출력 사각형. 카메라 계산 함수가 받는 FRect 형식이다.
+    FRect GetOutputRect() const { return {0.0f, 0.0f, OutputSize.X, OutputSize.Y}; }
+
+    // 보이는 동안 렌더 타깃을 출력 크기(최소 1픽셀)에 맞춘다. 크기가 같으면 다시 만들지 않는다.
+    void EnsureRenderTargets();
+    // 렌더 타깃을 놓는다. 다음 EnsureRenderTargets에서 다시 만든다.
+    void ReleaseRenderTargets() { Targets.Release(); }
+    // 씬(Linear, float) 렌더 정보. 불투명·반투명·안개가 그린다.
+    const FRenderingInfo& GetSceneRenderingInfo() const { return Targets.SceneInfo; }
+    // 화면 표시용(sRGB) 렌더 정보. 후처리 이후의 FXAA·Overlay가 그린다.
+    const FRenderingInfo& GetRenderingInfo() const { return Targets.ViewInfo; }
+    // 화면에 띄우는 최종 결과.
+    FTexture2D* GetColorTarget() const { return Targets.ViewColor.get(); }
+    // FXAA 결과를 임시로 받는 텍스처. ColorTarget과 크기·포맷이 같다.
+    FTexture2D* GetFxaaTarget() const { return Targets.FxaaTemp.get(); }
+    const FSceneRenderTargets& GetRenderTargets() const { return Targets; }
+
+    // 활성 Client에 입력을 넘긴다. 숨겨졌거나 Input.bEnabled가 꺼져 있으면 넘기지 않는다.
+    // Client가 바꾼 MoveSpeed는 Input에 남는다.
+    void UpdateInput(FViewportInput& Input);
 
     void SetViewRenderMode(const FViewRenderMode& Value) { ViewRenderMode = Value; }
     FViewRenderMode GetViewRenderMode() const { return ViewRenderMode; }
@@ -54,13 +77,15 @@ public:
     // 편집 Client의 프리셋과 실제로 그리는 카메라 방향으로 Grid 평면을 고른다. 편집 Client가 있어야 한다.
     EGridPlane GetGridPlane() const { return EditorClient->GetGridPlane(GetCamera().Transform.Rotation); }
     const FCameraProjection& GetProjection() const { return GetCamera().Projection; }
-    // View Rect 기준 로컬 좌표를 렌더 카메라로 역투영한다.
+    // 출력 기준 로컬 좌표(픽셀)를 렌더 카메라로 역투영한다.
     FRay Deproject(FVector2 ViewLocalPosition) const;
 
 private:
     TUniquePtr<FEditorViewportClient> EditorClient;
     TUniquePtr<FGameViewportClient> GameClient;
-    FRect Rect{};
+    // 레이아웃이 준 크기를 그대로 쓴다(소수 포함). 렌더 타깃만 정수 픽셀로 맞춘다.
+    FVector2 OutputSize{};
+    FSceneRenderTargets Targets;
     FViewRenderMode ViewRenderMode{};
     mutable FPreparedView Prepared{};
 };
