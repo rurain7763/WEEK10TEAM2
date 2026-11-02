@@ -32,7 +32,7 @@
 #include <cmath>
 #include "Component/LightComponent.h"
 #include "Engine/LightSceneProxy.h"
-
+#include "Core/PathUtils.h"
 
 namespace
 {
@@ -633,13 +633,13 @@ namespace
 					// 2: 텍스처 경로
 					if (Texture)
 					{
-						fs::path Path(Texture->GetPath());
-						FString FileName = Path.filename().string();
+						std::filesystem::path Path = PathUtils::FromUtf8(Texture->GetPath());
+						FString FileName = PathUtils::ToUtf8(Path.filename());
 
 						ImGui::TextWrapped("%s", FileName.c_str());
 						if (ImGui::IsItemHovered())
 						{
-							ImGui::SetTooltip("%s", Texture->GetPath().c_str());
+							ImGui::SetTooltip("%s", Path.c_str());
 						}
 					}
 					else

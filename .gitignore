@@ -23,6 +23,12 @@ mono_crash.*
 [Rr]elease/
 [Rr]eleases/
 
+# Keep bundled FBX SDK libraries, including debug/release directories.
+!/Source/ThirdParty/FBX/lib/x64/debug/
+!/Source/ThirdParty/FBX/lib/x64/debug/**
+!/Source/ThirdParty/FBX/lib/x64/release/
+!/Source/ThirdParty/FBX/lib/x64/release/**
+
 [Dd]ebug/x64/
 [Dd]ebugPublic/x64/
 [Rr]elease/x64/

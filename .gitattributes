@@ -48,3 +48,4 @@
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
 *.fbx filter=lfs diff=lfs merge=lfs -text
+Source/ThirdParty/FBX/lib/**/*.lib filter=lfs diff=lfs merge=lfs -text
