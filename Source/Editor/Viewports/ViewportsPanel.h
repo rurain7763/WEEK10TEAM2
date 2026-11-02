@@ -67,6 +67,7 @@ public:
 	// 그리기 전에 View의 활성 상태를 반영하고, Viewport가 렌더 타깃을 출력 크기에 맞추게 한다.
 	void SetView(int32 ViewIndex, bool bActive);
 
+
 	FVector2 GetContentSize() const { return {ContentSize.x, ContentSize.y}; }
 	FVector2 GetLocalMousePosition() const;
 	bool IsHovered() const;

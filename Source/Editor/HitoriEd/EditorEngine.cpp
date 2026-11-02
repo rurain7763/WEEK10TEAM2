@@ -45,6 +45,7 @@
 #include "Component/ShapeComponent.h"
 #include "Engine/GameViewportClient.h"
 #include "Editor/SkeletalMeshPreviewTab.h"
+#include "Component/DecalComponent.h"
 
 namespace
 {
@@ -785,6 +786,21 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 				continue;
 			if (Selection.IsSelected(Owner) || LocalLight->ShouldAlwaysDrawDebug())
 				LocalLight->DrawDebug(LineBatcher.get());
+		}
+
+		// 선택된 액터의 View별 데칼 볼륨 표시
+		for (TObjectIterator<UDecalComponent> It; It; ++It)
+		{
+			UDecalComponent* Decal = *It;
+			AActor* Owner = Decal->GetOwner();
+			if (!Owner || Owner->GetWorld() != &ViewWorld)
+			{
+				continue;
+			}
+			if (Selection.IsSelected(Owner))
+			{
+				Decal->DrawDebug(LineBatcher.get());
+			}
 		}
 	}
 

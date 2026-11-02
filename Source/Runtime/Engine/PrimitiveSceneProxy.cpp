@@ -58,6 +58,7 @@ void FPrimitiveSceneProxy::UpdateRenderState()
     bVisible = Component->IsVisible();
     bCastShadow = Component->IsCastShadow();
     bReceiveShadow = Component->IsReceiveShadow();
+    bReceivesDecals = Component->ReceivesDecals();
     bHiddenInGame = Component->IsHiddenInGame();
 }
 

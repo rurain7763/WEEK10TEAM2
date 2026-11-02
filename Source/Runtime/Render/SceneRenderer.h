@@ -17,6 +17,8 @@ class FTexture2D;
 struct FRenderingInfo;
 class UWorld;
 class FRenderer;
+class FDecalRenderer;
+
 
 struct FSceneView
 {
@@ -62,9 +64,14 @@ public:
 
 private:
 	// 불투명 물체에 대한 Pass
-	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld,
-		const FRenderingInfo& SceneInfo, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
-	// 월드에 배치된 텍스트 그리기
+	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FRenderingInfo& SceneInfo,
+		FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
+	// 데칼에 대한 Pass
+	void RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& World, 
+		const FRenderingInfo& SceneInfo);
+	// 반투명 물체에 대한 Pass
+	void RenderTranslucentPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld,
+		const FRenderingInfo& SceneInfo);	// 월드에 배치된 텍스트 그리기
 	void DrawWorldText(const FSceneView& SceneView, const UWorld& ViewWorld);
 	// 안개에 대한 Pass
 	void RenderFogPass(const FSceneView& SceneView, const UWorld& ViewWorld, const FRenderingInfo& SceneInfo);
@@ -84,6 +91,7 @@ private:
 	TUniquePtr<FGammaEncodeRenderer> GammaEncodeRenderer;
 	TUniquePtr<FDepthViewRenderer> DepthViewRenderer;
 	TUniquePtr<FTextRenderer> TextRenderer;
+	TUniquePtr<FDecalRenderer> DecalRenderer;
 
 	// 여러 View가 아틀라스 하나를 같이 쓰므로 마지막으로 그린 내용을 기억한다.
 	const UWorld* ShadowAtlasWorld = nullptr;

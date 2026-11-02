@@ -3,6 +3,8 @@
 #include "LightSceneProxy.h"
 #include "Render/ColorWorkflow.h"
 #include <Core/StatOverlay.h>
+#include "Component/DecalComponent.h"
+#include "Engine/DecalSceneProxy.h"
 
 void FScene::AddPrimitive(UPrimitiveComponent* Component)
 {
@@ -217,6 +219,47 @@ const FShadowInfo* FScene::GetDirectionalShadowInfo() const
 	return Result;
 }
 
+void FScene::AddDecal(UDecalComponent* Component)
+{
+	if (!Component || Component->SceneProxy) return;
+
+	FDecalSceneProxy* Proxy = new FDecalSceneProxy(Component, this);
+	Component->SceneProxy = Proxy;
+	Proxy->Refresh();
+	Decals.Add(Proxy);
+}
+
+void FScene::RemoveDecal(UDecalComponent* Component)
+{
+	if (!Component || !Component->SceneProxy) return;
+
+	FDecalSceneProxy* Proxy = Component->SceneProxy;
+	if (Proxy->GetScene() != this) return;
+
+	const int32 Index = Decals.Find(Proxy);
+	if (Index != INDEX_NONE) Decals.RemoveAt(Index);
+	Component->SceneProxy = nullptr;
+	delete Proxy;
+}
+
+void FScene::RemoveAllDecals()
+{
+	for (FDecalSceneProxy* Proxy : Decals)
+	{
+		UDecalComponent* Component = Proxy->GetComponent();
+		if (Component->SceneProxy == Proxy)
+			Component->SceneProxy = nullptr;
+		delete Proxy;
+	}
+	Decals.Reset();
+}
+
+void FScene::MarkDecalDirty(FDecalSceneProxy* Proxy)
+{
+	if (Proxy && Proxy->GetScene() == this)
+		Proxy->bDirty = true;
+}
+
 void FScene::UpdateAllTransforms()
 {
 	for (FPrimitiveSceneProxy* Proxy : RenderStateDirtyProxies)
@@ -248,25 +291,16 @@ void FScene::UpdateAllTransforms()
 	}
 	DirtyLights.Reset();
 
-	//const int32 Count = Proxies.Num();
-	//for (int32 i = 0; i < Count; ++i)
-	//{
-	//	FPrimitiveSceneProxy* Proxy = Proxies[i];
-	//	Proxy->UpdateTransform();
-
-	//	const FAABB& Bounds = Proxy->GetBounds();
-	//	if (PrimitiveBounds[i].Center != Bounds.Center || PrimitiveBounds[i].Extent != Bounds.Extent)
-	//	{
-	//		bBoundsChanged = true;
-	//	}
-
-	//	PrimitiveBounds[i] = Proxy->GetBounds();
-	//	PrimitiveFlags[i] = Proxy->GetComponent()->IsVisible() ? 1 : 0;
-	//}
+	for (FDecalSceneProxy* Proxy : Decals)
+	{
+		if (Proxy->bDirty)
+		{
+			Proxy->Refresh();
+		}
+	}
 
 	const bool bAnyMoved = DirtyProxies.Num() > 0;
 	DirtyProxies.Reset();
-
 
 	if (bElementListChanged)
 	{

@@ -214,6 +214,18 @@ void FRenderDevice::CreateStates()
 		ShadowDesc.SlopeScaledDepthBias = 2.0f;
 		ShadowDesc.DepthBiasClamp = 0.0f;
 		Device->CreateRasterizerState(&ShadowDesc, RasterizerStates[(uint8)ERasterizerState::ShadowDepth].GetAddressOf());
+
+		// 깊이 클리핑과 바이어스를 제외한 데칼 볼륨 상태
+		D3D11_RASTERIZER_DESC DecalDesc{};
+		DecalDesc.FillMode = D3D11_FILL_SOLID;
+		DecalDesc.CullMode = D3D11_CULL_FRONT;
+		DecalDesc.FrontCounterClockwise = FALSE;
+		DecalDesc.DepthClipEnable = FALSE;
+		Device->CreateRasterizerState(&DecalDesc, RasterizerStates[(uint8)ERasterizerState::DecalCullFront].GetAddressOf());
+
+		// 음수 스케일에 따른 면 방향 반전 대응
+		DecalDesc.CullMode = D3D11_CULL_BACK;
+		Device->CreateRasterizerState(&DecalDesc, RasterizerStates[(uint8)ERasterizerState::DecalCullBack].GetAddressOf());
 	}
 
 	// ---------- DepthStencil ----------

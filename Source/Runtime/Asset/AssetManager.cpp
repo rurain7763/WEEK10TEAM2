@@ -198,6 +198,7 @@ void UAssetManager::Init(const FAssetLoadProgress& OnProgress)
 	Get().CreateDefaultMeshes();
 	Get().CreateParticleMaterial();
 	Get().CreateBillboardMaterial();
+	Get().CreateDecalMaterial();
 }
 
 void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgress& OnProgress)
@@ -425,6 +426,20 @@ void UAssetManager::CreateBillboardMaterial()
 	BillboardMat->ParamLayout = EMaterialParamLayout::Billboard;
 	BillboardMat->ParamBuffer = RenderCommand::CreateConstantBuffer(sizeof(FBillboardMaterialParams));
 	RegisterAsset("BillboardMaterial", BillboardMat);
+}
+
+void UAssetManager::CreateDecalMaterial()
+{
+	UMaterial* Material = NewObject<UMaterial>();
+	Material->MaterialDomain = EMaterialDomain::Decal;
+	Material->ParamLayout = EMaterialParamLayout::None;
+	Material->Textures.Add(GetAssetByPath<UTexture2D>("WhiteTexture"));
+	Material->Textures.Add(GetAssetByPath<UTexture2D>("FlatNormalTexture"));
+	Material->BaseColor = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	Material->BlendState = EBlendState::AlphaBlend;
+	Material->DepthStencilState = EDepthStencilState::Disabled;
+	Material->SamplerState = ESamplerState::LinearClamp;
+	RegisterAsset("DefaultDecalMaterial", Material);
 }
 
 void UAssetManager::Shutdown()

@@ -1,5 +1,7 @@
 #include "EnginePCH.h"
 #include "RenderUtil.h"
+#include <algorithm>
+#include <fstream>
 
 namespace
 {
@@ -101,14 +103,42 @@ FString RenderUtil::GetCsoPath(const FString& ShaderPath, EShaderType ShaderType
 bool RenderUtil::IsCsoUpToDate(const FString& ShaderPath, const FString& CsoPath)
 {
 	std::error_code Ec;
-	if (!fs::exists(CsoPath, Ec)) return false;
-
-	const auto SrcTime = fs::last_write_time(ShaderPath, Ec);
-	if (Ec) return false;
 	const auto CsoTime = fs::last_write_time(CsoPath, Ec);
-	if (Ec) return false;
+	if (Ec){ return false; }
 
-	return CsoTime > SrcTime;
+	// 중복 검사와 순환 참조 방지를 위한 방문 경로
+	TSet<FString> Visited;
+	const auto IsSourceUpToDate = [&](auto&& Self, const fs::path& SourcePath) -> bool
+		{
+			const fs::path Path = SourcePath.lexically_normal();
+			if (!Visited.Add(Path.generic_string())){ return true; }
+
+			const auto SourceTime = fs::last_write_time(Path, Ec);
+			if (Ec || SourceTime >= CsoTime){ return false; }
+
+			std::ifstream Input(Path);
+			if (!Input){ return false; }
+
+			// 프로젝트의 문자열 리터럴 기반 로컬 include 추적
+			FString Line;
+			while (std::getline(Input, Line))
+			{
+				const size_t Prefix = Line.find_first_not_of(" \t");
+				if (Prefix == FString::npos || Line[Prefix] != '#'){ continue; }
+
+				const size_t Directive = Line.find_first_not_of(" \t", Prefix + 1);
+				if (Directive == FString::npos || Line.compare(Directive, 7, "include") != 0){ continue; }
+
+				const size_t Begin = Line.find_first_not_of(" \t", Directive + 7);
+				const size_t End = Begin == FString::npos ? FString::npos : Line.find('"', Begin + 1);
+				if (Begin == FString::npos || Line[Begin] != '"' || End == FString::npos){ return false; }
+
+				const fs::path IncludePath = Path.parent_path() / Line.substr(Begin + 1, End - Begin - 1);
+				if (!Self(Self, IncludePath)){ return false; }
+			}
+			return !Input.bad();
+		};
+	return IsSourceUpToDate(IsSourceUpToDate, fs::path(ShaderPath));
 }
 
 FShaderByteCode RenderUtil::GetOrCompile(const FString& ShaderPath, const char* EntryPoint, EShaderType ShaderType, FString& OutCSOPath,

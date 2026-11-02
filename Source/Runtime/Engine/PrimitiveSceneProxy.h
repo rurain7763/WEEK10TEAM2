@@ -36,6 +36,7 @@ public:
     bool IsVisible() const { return bVisible; }
     bool IsCastShadow() const { return bCastShadow; }
     bool IsReceiveShadow() const { return bReceiveShadow; }
+    bool ReceivesDecals() const{ return bReceivesDecals; }
     bool IsHiddenInGame() const { return bHiddenInGame; }
 
     uint8 GetLODCount() const { return RenderState ? RenderState->LODCount : 1; }
@@ -69,6 +70,7 @@ private:
     bool bVisible = true;
     bool bCastShadow = true;
     bool bReceiveShadow = true;
+    bool bReceivesDecals = true;
     bool bHiddenInGame = false;
 };
 

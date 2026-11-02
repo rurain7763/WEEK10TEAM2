@@ -1,5 +1,8 @@
 #pragma pack_matrix(row_major)
 
+#ifndef HITORI_UBER_LIT_INCLUDED
+#define HITORI_UBER_LIT_INCLUDED
+
 // EViewMode 순서와 일치해야 한다.
 #define VIEWMODE_LIT          0
 #define VIEWMODE_UNLIT        1
@@ -126,6 +129,7 @@ struct FPSInput
     float3 DiffuseLight : TEXCOORD2;
     float3 SpecularLight : TEXCOORD3;
 #endif
+    nointerpolation uint ReceivesDecals : TEXCOORD4;
 };
 
 cbuffer ViewConstants : register(b0)
@@ -149,6 +153,8 @@ cbuffer PerObjectConstants : register(b2)
 {
     matrix World;
     matrix NormalMatrix; // World의 역전치
+    uint ReceivesDecals;
+    float3 ObjectPadding;
 };
 
 cbuffer LightingConstants : register(b3)
@@ -882,38 +888,55 @@ float3 WorldPosition, float3 V, float n, float2 PixelPosition, out float3 Diffus
     }
 }
 
+float3 GetLocalVertexPosition(FVSInput Input)
+{
+#if USE_SKINNING
+    if (Input.BoneInfluenceCount == 0)
+    {
+        return Input.Position;
+    }
+
+    float3 LocalPosition = float3(0.0f, 0.0f, 0.0f);
+    for (int Index = 0; Index < Input.BoneInfluenceCount; ++Index)
+    {
+        int BoneIndex = Input.BoneIndices[Index];
+        float BoneWeight = Input.BoneWeights[Index];
+        float4 Position =
+            mul(float4(Input.Position, 1.0f), BoneMatrices[BoneIndex]) * BoneWeight;
+        LocalPosition += Position.xyz;
+    }
+
+    return LocalPosition;
+#else
+    return Input.Position;
+#endif
+}
+
+// 표면 진입점을 제외하는 라이브러리 사용 경계
+#ifndef UBER_LIT_LIBRARY_ONLY
+
+// 씬 컬러와 기하 노멀 및 수신 여부의 동시 출력
+struct FPSOutput
+{
+    float4 SceneColor : SV_Target0;
+    float4 NormalReceiver : SV_Target1;
+};
+
 FPSInput mainVS(FVSInput Input)
 {
     FPSInput Output;
-
-#if USE_SKINNING
-    float3 SkinnedPosition = float3(0, 0, 0);
-    if (Input.BoneInfluenceCount == 0)
-    {
-        SkinnedPosition = Input.Position;
-    }
     
-    for (int i = 0; i < Input.BoneInfluenceCount; i++)
-    {
-        int BoneIndex = Input.BoneIndices[i];
-        float BoneWeight = Input.BoneWeights[i];
-        float4 Position = mul(float4(Input.Position, 1.0), BoneMatrices[BoneIndex]) * BoneWeight;
-        SkinnedPosition += Position.xyz;
-    }
-    
-    float4 WorldPosition = mul(float4(SkinnedPosition, 1.0f), World);
-#else
-    float4 WorldPosition = mul(float4(Input.Position, 1.0f), World);
-#endif
+    float4 WorldPosition = mul(float4(GetLocalVertexPosition(Input), 1.0f), World);
 
     Output.Position = mul(WorldPosition, ViewProjection);
     Output.WorldPosition = WorldPosition.xyz;
     Output.Normal = mul(Input.Normal, (float3x3) NormalMatrix);
+    Output.UV = Input.UV;
+    Output.ReceivesDecals = ReceivesDecals;
 #if USE_NORMAL_MAP
     Output.Tangent = mul(Input.Tangent.xyz, (float3x3) World);
     Output.BitangentSign = Input.Tangent.w;
 #endif
-    Output.UV = Input.UV;
 #if GOURAUD
     float3 N = normalize(Output.Normal);
     float3 V = normalize(CameraPosition - Output.WorldPosition);
@@ -924,7 +947,7 @@ FPSInput mainVS(FVSInput Input)
     return Output;
 }
 
-float4 mainPS(FPSInput Input) : SV_TARGET
+float4 EvaluateSurfaceColor(FPSInput Input) : SV_TARGET
 {
     float4 FinalColor = float4(0.0f, 0.0f, 0.0f, 1.0f);
 
@@ -1039,3 +1062,14 @@ float4 mainPS(FPSInput Input) : SV_TARGET
 #endif
     return FinalColor;
 }
+
+// 표면 색상과 데칼 수신 데이터의 동시 출력
+FPSOutput mainPS(FPSInput Input)
+{
+    FPSOutput Output;
+    Output.SceneColor = EvaluateSurfaceColor(Input);
+    Output.NormalReceiver = float4(normalize(Input.Normal), Input.ReceivesDecals != 0u ? 1.0f : 0.0f);
+    return Output;
+}
+#endif
+#endif

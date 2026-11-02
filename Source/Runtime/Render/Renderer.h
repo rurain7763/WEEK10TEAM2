@@ -22,7 +22,11 @@ struct FPerObjectConstants
 {
 	FMatrix World;
 	FMatrix NormalMatrix;
+	uint32 ReceivesDecals = 0;
+	uint32 Padding[3]{};
 };
+
+static_assert(sizeof(FPerObjectConstants) == 144);
 static_assert(sizeof(FPerObjectConstants) <= ObjectSlotBytes);
 
 struct FViewConstants
@@ -35,11 +39,17 @@ static_assert(sizeof(FViewConstants) == 80, "HLSL b0 레이아웃(matrix + float
 
 inline FMatrix MakeNormalMatrix(const FMatrix& World) { return World.Inverse().GetTransposed(); }
 
-inline void WriteObjectSlot(uint8* SlotBase, uint32 Slot, const FMatrix& World, const FMatrix& NormalMatrix)
+inline void WriteObjectSlot(uint8* SlotBase, uint32 Slot, const FMatrix& World, const FMatrix& NormalMatrix
+,bool bReceivesDecals = false)
 {
+	const FPerObjectConstants Constants{
+	.World = World,
+	.NormalMatrix = NormalMatrix,
+	.ReceivesDecals = bReceivesDecals ? 1u : 0u,
+	};
+
 	uint8* Dest = SlotBase + static_cast<size_t>(Slot) * ObjectSlotBytes;
-	std::memcpy(Dest + offsetof(FPerObjectConstants, World), &World, sizeof(FMatrix));
-	std::memcpy(Dest + offsetof(FPerObjectConstants, NormalMatrix), &NormalMatrix, sizeof(FMatrix));
+	std::memcpy(Dest, &Constants, sizeof(Constants));
 }
 
 struct FSortEntry
@@ -123,7 +133,7 @@ public:
 		bool bCacheHit = false);
 
 	void BindShadowForShading();
-
+	void BindSceneLighting();
 	//ImGui용 PreviewSRV 반환
 	//ID3D11ShaderResourceView* GetShadowPreviewSRV() const { return ShadowMapManager.GetPreviewSRV(); }
 
@@ -159,7 +169,7 @@ private:
 
 	void DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProjection);
 	void DrawStaticGroups();
-	void UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix);
+	void UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix, bool bReceivesDecals = false);
 
 	// 이번 프레임 스태틱 메시 묶음 (정렬 키 순). 비어 있지 않은 것만 담는다.
 	std::vector<const FStaticDrawGroup*> StaticGroups;

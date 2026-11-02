@@ -4,10 +4,16 @@
 #include "Render/RenderStates.h"
 #include "Render/Texture2D.h"
 #include "Math/Color.h"
+#include "Render/Buffer.h"
+
 
 class FShader;
 
-
+enum class EMaterialDomain : uint8
+{
+	Surface,
+	Decal
+};
 
 enum class EMaterialParamLayout
 {
@@ -41,9 +47,9 @@ class UMaterial : public UMaterialInterface
 public:
 	UMaterial() :SortID(NextSortID++) {};
 	virtual ~UMaterial() override = default;
-
+	EMaterialDomain MaterialDomain = EMaterialDomain::Surface;
 	EMaterialParamLayout ParamLayout = EMaterialParamLayout::None;
-	FShaderProgram* Shader;
+	FShaderProgram* Shader = nullptr;
 	TArray<UTexture2D*> Textures;
 	TUniquePtr<FConstantBuffer> ParamBuffer;
 	EBlendState BlendState = EBlendState::Opaque;

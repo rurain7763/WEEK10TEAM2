@@ -9,6 +9,7 @@
 #include "Component/PrimitiveComponent.h"
 #include "Component/StaticMeshComponent.h"
 #include "Component/SkeletalMeshComponent.h"
+#include "Component/DecalComponent.h"
 #include "Component/TextRenderComponent.h"
 #include "Component/ParticleSubUVComponent.h"
 #include "Component/RotatingMovementComponent.h"
@@ -1233,6 +1234,12 @@ namespace
 				ComponentNameInputBuf[0] = '\0';
 				ImGui::CloseCurrentPopup();
 			}
+			if (ImGui::MenuItem("Decal Component"))
+			{
+				OutSelectedComponent = Actor->AddComponent(UDecalComponent::StaticClass(), FString(ComponentNameInputBuf));
+				ComponentNameInputBuf[0] = '\0';
+				ImGui::CloseCurrentPopup();
+			}
 			ImGui::EndPopup();
 		}
 	}
@@ -1297,6 +1304,109 @@ namespace
 		{
 			FLuaScriptEditor::EditScript(ScriptComponent);
 		}
+	}
+
+	UMaterial* GetEditableDecalMaterial(UDecalComponent* Decal)
+	{
+		UMaterial* Material = Decal->GetDecalMaterial();
+
+		if (!Material->bIsInstance)
+		{
+			Material = UMaterial::CreateInstance(Material);
+			Decal->SetDecalMaterial(Material);
+		}
+		return Material;
+	}
+
+	
+	void DrawDecalMaterial(UDecalComponent* Decal)
+	{
+		
+		bool bActive = Decal->IsActive();
+		if (ImGui::Checkbox("Decal Active", &bActive)) Decal->SetActive(bActive);
+
+		bool bHiddenInGame = Decal->IsHiddenInGame();
+		if (ImGui::Checkbox("Decal Hidden In Game", &bHiddenInGame)) Decal->SetHiddenInGame(bHiddenInGame);
+
+		if (!ImGui::CollapsingHeader("Decal Material", ImGuiTreeNodeFlags_DefaultOpen))	return;
+
+		// 인스턴스 원본을 기준으로 한 머티리얼 선택 표시
+		UMaterial* Material = Decal->GetDecalMaterial();
+		const UMaterial* BaseAsset = Material ? Material->GetBaseAsset() : nullptr;
+		const FString Preview = BaseAsset ? GetAssetDisplayName(BaseAsset->GetPath()) : FString("None");
+
+		if (ImGui::BeginCombo("Material", Preview.c_str()))
+		{
+			if (ImGui::Selectable("None", Material == nullptr))
+				Decal->SetDecalMaterial(nullptr);
+
+			// 경로가 있는 Decal 도메인 에셋만 선택 후보로 구성
+			for (TObjectIterator<UMaterial> It; It; ++It)
+			{
+				UMaterial* Candidate = *It;
+				if (Candidate->MaterialDomain != EMaterialDomain::Decal || Candidate->GetPath().empty())
+				{
+					continue;
+				}
+
+				const FString& Path = Candidate->GetPath();
+				const FString DisplayName = GetAssetDisplayName(Path);
+
+				ImGui::PushID(Candidate);
+				if (ImGui::Selectable(DisplayName.c_str(), Candidate == BaseAsset))
+				{
+					Decal->SetDecalMaterial(Candidate);
+				}
+				if (ImGui::IsItemHovered())
+				{
+					ImGui::SetTooltip("%s", Path.c_str());
+				}
+				ImGui::PopID();
+			}
+			ImGui::EndCombo();
+		}
+
+		// 선택 결과 재조회 및 머티리얼 없는 상태의 편집 종료
+		Material = Decal->GetDecalMaterial();
+		if (!Material)	return;
+
+		// 기존 텍스처 슬롯의 썸네일 및 드래그 앤 드롭 재사용
+		ImGui::TextUnformatted("Albedo");
+		DrawTextureSlot(&Material, 0);
+		ImGui::TextUnformatted("Normal");
+		DrawTextureSlot(&Material, 1);
+
+		// 텍스처 편집 중 생성된 인스턴스의 컴포넌트 연결
+		if (Material != Decal->GetDecalMaterial())
+			Decal->SetDecalMaterial(Material);
+
+		// 실제 색상 변경 시 편집용 인스턴스 확보
+		FLinearColor BaseColor = Material->BaseColor;
+		if (ColorEditLinear("Base Color", &BaseColor.R))
+		{
+			Material = GetEditableDecalMaterial(Decal);
+			Material->BaseColor = BaseColor;
+		}
+
+		FLinearColor SpecularColor = Material->SpecularColor;
+		if (ColorEditLinear("Specular Color", &SpecularColor.R, ImGuiColorEditFlags_NoAlpha))
+		{
+			Material = GetEditableDecalMaterial(Decal);
+			Material->SpecularColor = SpecularColor;
+		}
+
+		// 기존 메시 머티리얼과 동일한 반사 지수 편집
+		float Shininess = Material->Shininess;
+		if (ImGui::DragFloat("Shininess", &Shininess, 1.0f, 1.0f, 1024.0f))
+		{
+			Material = GetEditableDecalMaterial(Decal);
+			Material->Shininess = Shininess;
+		}
+
+		// 기존 머티리얼 속성을 이용한 노멀맵 방향 설정
+		bool bFlipNormalGreen = Material->bFlipNormalGreen;
+		if (ImGui::Checkbox("Flip Normal Green", &bFlipNormalGreen))
+			GetEditableDecalMaterial(Decal)->bFlipNormalGreen = bFlipNormalGreen;
 	}
 }
 
@@ -1367,6 +1477,10 @@ void FDetailsPanel::OnRender()
 			if (UMeshComponent* MeshComponent = Cast<UMeshComponent>(TargetComponent))
 			{
 				DrawMaterialSlots(MeshComponent);
+			}
+			if (UDecalComponent* Decal = Cast<UDecalComponent>(TargetComponent))
+			{
+				DrawDecalMaterial(Decal);
 			}
 			if (ULightComponent* Light = Cast<ULightComponent>(TargetComponent))
 			{
