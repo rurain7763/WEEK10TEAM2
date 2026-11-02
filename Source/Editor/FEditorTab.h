@@ -9,6 +9,16 @@ class FGizmo;
 class UWorld;
 class UObject;
 
+// 엔진이 탭 대신 렌더할 뷰 하나. 포인터는 모두 비소유이고 이번 프레임 렌더 동안만 유효하므로 보관하지 않는다
+struct FEditorTabView
+{
+	FViewport* Viewport = nullptr;
+	// 있으면 Grid 같은 에디터 표시를 함께 그린다
+	FEditorViewportClient* OverlayClient = nullptr;
+	// 탭이 따로 쓰는 Gizmo. 대상이 이 뷰의 월드에 있을 때만 그린다
+	const FGizmo* Gizmo = nullptr;
+};
+
 struct FEditorTabSettings
 {
 	FString Title;
@@ -43,7 +53,7 @@ public:
 		return Ret;
 	}
 
-	void Tick(float DeltaTime);
+	virtual void Tick(float DeltaTime);
 	void RenderPanels();
 
 	const char* GetTitle() const { return Settings.Title.c_str(); }
@@ -64,14 +74,20 @@ public:
 	// 같은 에셋을 두 번 열면 새 탭 대신 기존 탭을 띄우는 데 쓴다
 	virtual const UObject* GetEditingAsset() const { return nullptr; }
 	virtual UWorld* GetWorld() const { return nullptr; }
+
+	//엔진이 넘겨준 입력을 탭 안으로 전달
+	virtual void RouteInput(const FViewportInput& BaseInput) {};
+	//엔진에게 "이 탭에서 그릴 화면"을 알려 줌
+	virtual void CollectViews(TArray<FEditorTabView>& OutViews) {};
+
 protected:
 	// imgui.ini에 이 탭의 배치가 없을 때 한 번 부른다. 기본은 모든 패널을 한 노드에 겹친다
 	// DockBuilder로 DockSpaceRoot를 나누고 패널 창 이름으로 배치한다
 	void BuildDefaultLayout(ImGuiID DockSpaceRoot);
-
-private:
 	//이 탭이 가지고있는 패널들
 	TArray<TUniquePtr<IEditorPanel>> Panels;
+private:
+
 	//탭 설정
 	FEditorTabSettings Settings;
 

@@ -56,6 +56,10 @@ public:
 	// View 하나의 씬을 그린다.
 	// 씬은 SceneRenderingInfo(Linear float)에 그리고, 인코딩한 결과와 에디터 표시는 ViewRenderingInfo(sRGB)에 그린다.
 	void RenderFrame(const FSceneView& SceneView, const FSceneRenderSettings& Settings, UWorld& ViewWorld, const FRenderingInfo& SceneRenderingInfo, const FRenderingInfo& ViewRenderingInfo, FTexture2D* FxaaTexture, FRenderQueue& InRenderQueue);
+	// Viewport 하나를 자기 렌더 타깃에 그린다. 씬을 그린 뒤 오버레이(Grid·Gizmo·UUID)와 PIE UI를 얹는다.
+	// OverlayClient가 있으면 에디터 표시를 그리고, ViewGizmo는 대상이 이 월드에 있을 때만 그린다.
+	void RenderFrame(const FViewport& Viewport, UWorld& ViewWorld, const FSceneView& View, const FSceneRenderSettings& Settings,
+		FEditorViewportClient* OverlayClient, const FGizmo* ViewGizmo = nullptr);
 	// 네 View 결과와 ImGui를 메인 Swapchain 백버퍼에 합성한다. Present는 FEngineLoop가 한다.
 	void PresentFrame();
 	void DeleteActor(AActor* Actor);
@@ -89,8 +93,8 @@ private:
 	void UpdateMultipleViewportState(float DeltaTime);
 	// 월드를 정확히 한 번 Tick·Capture한 뒤 에디터 상호작용을 갱신한다.
 	void TickWorldAndEditor(float DeltaTime);
-	// 한 번 캡처한 월드 결과를 재사용해 현재 레이아웃의 각 View를 렌더한다.
-	void RenderMultipleViewports();
+	// 모든 탭이 넘긴 View(레벨 슬롯·에셋 탭 뷰)를 같은 조건으로 그리고, 별도 PIE 창을 따로 그린다.
+	void RenderViewports();
 	// PIE View가 PlayWorld 메인 카메라로 보이도록 Game Client 카메라를 갱신하고 게임 카메라 입력을 켜고 끈다.
 	void UpdatePIEViewCamera();
 
@@ -105,13 +109,13 @@ private:
 	// 화면 합성과 View 설정 보관으로 프레임을 마무리한다.
 	void EndFrame();
 	void UpdateEditorTabs();
-	FSceneView MakeSceneView(int32 ViewIndex) const;
+	FSceneView MakeSceneView(const FViewport& Viewport) const;
 	FSceneRenderSettings MakeSceneRenderSettings() const;
 
 	void OpenSkeletalMeshViewer(USkeletalMesh* SkeletalMesh);
 
 	//Overlay Pass
-	void RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue);
+	void RenderOverlayPass(const FViewport& Viewport, FEditorViewportClient* OverlayClient, UWorld& ViewWorld, const FSceneView& View, FRenderQueue& RenderQueue, const FGizmo* ViewGizmo);
 
 	FWorldContext* GetPIEWorldContext(int32 WorldPIEInstance = 0);
 	UWorld* GetActiveWorld() const { return PlayWorld ? PlayWorld : EditorWorld; }
