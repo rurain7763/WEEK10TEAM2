@@ -165,6 +165,9 @@ bool UEditorEngine::Init()
 
 	// 투영 행렬 생성 
 	ViewportsPanel->InitializeDefaultViews();
+	// 레벨 View 편집 Client는 모두 EditorWorld를 편집한다.
+	for (int32 ViewIndex = 0; ViewIndex < FViewportsPanel::ViewCount; ++ViewIndex)
+		ViewportsPanel->GetEditorClient(ViewIndex).SetWorld(EditorWorld);
 	// 화면 나눔 비율 설정 가져오기
 	ViewportsPanel->SetSplitRatio({
 		SettingsPanel->GetSettings().MultipleViewportsHorizontal,
@@ -464,84 +467,76 @@ void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 		PlayWorld->GetScene().UpdateAllTransforms();
 }
 
-// View가 그릴 월드가 바뀔 때만 다시 캡처해 활성 View별 렌더 큐를 만들고 렌더한다.
+// View 월드 변경 시 캡처 갱신 및 활성 View별 렌더링
 void UEditorEngine::RenderMultipleViewports()
 {
-	// PIE 창 크기를 외부 View에 먼저 알려야 카메라 Override의 직교 폭 보정이 맞는다.
+	// 카메라 갱신 전 별도 PIE 창의 출력 크기 반영
 	bPIEWindowRendered = false;
 	SceneRenderer.BeginFrame();
 	const bool bRenderPIEWindow = IsPIEInWindow() && UpdatePIEWindowTargets();
 	const FSceneRenderSettings SceneRenderSettings = MakeSceneRenderSettings();
 
-	// 월드 Tick으로 움직인 게임 카메라를 같은 프레임에 반영한다.
+	// 월드 Tick 이후 게임 카메라의 동일 프레임 반영
 	UpdatePIEViewCamera();
 
+	// 동일 월드 캡처 재사용 및 Viewport별 렌더 타깃 출력
 	UWorld* CapturedWorld = nullptr;
-	for (int32 ViewIndex = 0; ViewIndex < 4; ++ViewIndex)
+	const auto RenderView = [&](const int32 ViewIndex)
+		{
+			const FViewport& Viewport = GetViewportForView(ViewIndex);
+			UWorld* ViewWorld = GetWorldForView(ViewIndex);
+			if (ViewWorld != CapturedWorld)
+			{
+				SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
+				RenderCollector.CaptureWorld(*ViewWorld);
+				CapturedWorld = ViewWorld;
+			}
+
+			{
+				SCOPE_CYCLE_COUNTER(STAT_BuildRenderQueue);
+				RenderCollector.BuildRenderQueue(Viewport, RenderQueue);
+			}
+
+			FSceneView SceneView = MakeSceneView(ViewIndex);
+
+			// 현재 Viewport가 소유한 DBuffer 포함 렌더 타깃 묶음
+			const FSceneRenderTargets& Targets = Viewport.GetRenderTargets();
+			RenderFrame(
+				SceneView,
+				SceneRenderSettings,
+				*ViewWorld,
+				Targets,
+				RenderQueue);
+
+			RenderOverlayPass(ViewIndex, *ViewWorld, Targets, SceneView.ViewProjection,
+				SceneView.Location, SceneView.Forward, RenderQueue);
+		};
+
+	for (int32 ViewIndex = 0; ViewIndex < FViewportsPanel::ViewCount; ++ViewIndex)
 	{
 		const bool bActive = ViewportsPanel->IsViewActive(ViewIndex);
 		ViewportsPanel->SetView(ViewIndex, bActive);
-		if (!bActive)
-			continue;
-
-		UWorld* ViewWorld = GetWorldForView(ViewIndex);
-		if (ViewWorld != CapturedWorld)
+		if (bActive)
 		{
-			SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
-			RenderCollector.CaptureWorld(*ViewWorld);
-			CapturedWorld = ViewWorld;
+			RenderView(ViewIndex);
 		}
-
-		{
-			SCOPE_CYCLE_COUNTER(STAT_BuildRenderQueue);
-			RenderCollector.BuildRenderQueue(GetViewportForView(ViewIndex), RenderQueue);
-		}
-
-		FSceneView SceneView = MakeSceneView(ViewIndex);
-
-		RenderFrame(
-			SceneView,
-			SceneRenderSettings,
-			*ViewWorld,
-			ViewportsPanel->GetRenderTargets(ViewIndex),
-			RenderQueue);
-
-		const FSceneRenderTargets& Targets = ViewportsPanel->GetRenderTargets(ViewIndex);
-		RenderOverlayPass(ViewIndex, *ViewWorld, Targets, SceneView.ViewProjection, SceneView.Location, SceneView.Forward, RenderQueue);
 	}
 
-	// 별도 PIE 창은 패널 View 뒤에 PlayWorld를 한 번 더 캡처해 그린다.
+	// 패널 View 이후 별도 PIE 창 렌더링 및 백버퍼 복사
 	if (bRenderPIEWindow && IsViewActive(PIEViewIndex))
 	{
-		UWorld* ViewWorld = GetWorldForView(PIEViewIndex);
-		if (ViewWorld != CapturedWorld)
-		{
-			SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
-			RenderCollector.CaptureWorld(*ViewWorld);
-			CapturedWorld = ViewWorld;
-		}
-
-		{
-			SCOPE_CYCLE_COUNTER(STAT_BuildRenderQueue);
-			RenderCollector.BuildRenderQueue(GetViewportForView(PIEViewIndex), RenderQueue);
-		}
-
-		FSceneView SceneView = MakeSceneView(PIEViewIndex);
-
-		RenderFrame(
-			SceneView,
-			SceneRenderSettings,
-			*ViewWorld,
-			PIETargets,
-			RenderQueue);
-
-		RenderOverlayPass(PIEViewIndex, *ViewWorld, PIETargets, SceneView.ViewProjection, SceneView.Location, SceneView.Forward, RenderQueue);
+		RenderView(PIEViewIndex);
 		CopyPIEWindowToBackbuffer();
 	}
 
-	for (int32 ViewIndex = 0; ViewIndex < 5; ++ViewIndex) {
-		UWorld * World = GetWorldForView(ViewIndex);
-		if (World == nullptr) continue;
+	// 패널 View와 별도 PIE View 월드의 그림자 갱신 상태 정리
+	for (int32 ViewIndex = 0; ViewIndex < FViewportsPanel::ViewCount + 1; ++ViewIndex)
+	{
+		UWorld* World = GetWorldForView(ViewIndex);
+		if (World == nullptr)
+		{
+			continue;
+		}
 		World->GetScene().ClearShadowDirty();
 	}
 }
@@ -574,8 +569,11 @@ void UEditorEngine::UpdatePIEViewCamera()
 		PlayerView.OrthoWidth,
 		PlayerView.NearClip,
 		PlayerView.FarClip };
+	// 월드가 바뀌면 HandleOnPIEWorldChanged가 Game Client를 떼므로 여기서 새 PlayWorld로 다시 붙는다.
 	FViewport& PIEViewport = GetViewportForView(PIEViewIndex);
-	PIEViewport.BeginPlay().SetCamera(PlayerView.Location, Forward, Projection, PIEViewport.GetRect());
+	if (!PIEViewport.HasGameClient())
+		PIEViewport.BeginPlay(MakeUnique<FGameViewportClient>(*PlayWorld));
+	PIEViewport.GetGameClient()->SetCamera(PlayerView.Location, Forward, Projection, PIEViewport.GetOutputRect());
 }
 
 // 화면을 표시하고 UI 변경 후 View 설정을 보관한다.
@@ -613,7 +611,7 @@ void UEditorEngine::UpdateEditorTabs()
 FSceneView UEditorEngine::MakeSceneView(int32 ViewIndex) const
 {
 	const FViewport& Viewport = GetViewportForView(ViewIndex);
-	const FRect& Rect = Viewport.GetRect();
+	const FVector2 OutputSize = Viewport.GetOutputSize();
 	const FCameraProjection& Projection = Viewport.GetProjection();
 
 	return {
@@ -621,7 +619,7 @@ FSceneView UEditorEngine::MakeSceneView(int32 ViewIndex) const
 		.Location = Viewport.GetCameraLocation(),
 		.Forward = Viewport.GetCameraForward(),
 		.FovDegrees = Projection.FovDegrees > 0.0f ? Projection.FovDegrees : 60.0f,
-		.AspectRatio = (Rect.Width > 0.0f && Rect.Height > 0.0f) ? Rect.Width / Rect.Height : 16.0f / 9.0f,
+		.AspectRatio = Viewport.IsVisible() ? OutputSize.X / OutputSize.Y : 16.0f / 9.0f,
 		.bOrthographic = Projection.Mode == EProjectionMode::Orthographic,
 		.RenderMode = Viewport.GetViewRenderMode()
 	};
@@ -645,7 +643,7 @@ const FViewport& UEditorEngine::GetViewportForView(const int32 ViewIndex) const
 bool UEditorEngine::IsViewActive(const int32 ViewIndex) const
 {
 	if (ViewIndex == PIEWindowViewIndex)
-		return PIEWindowViewport.HasGameClient() && IsViewRectValid(PIEWindowViewport.GetRect());
+		return PIEWindowViewport.HasGameClient() && PIEWindowViewport.IsVisible();
 	return ViewportsPanel->IsViewActive(ViewIndex);
 }
 
@@ -949,7 +947,8 @@ void UEditorEngine::UpdateGizmoAndPicking()
 		return;
 
 	const FViewport& Viewport = ViewportsPanel->GetViewport(ViewIndex);
-	const FRect& Rect = Viewport.GetRect();
+	// 마우스를 View 기준으로 바꾸는 오프셋은 배치를 아는 패널 Rect에서 얻는다.
+	const FRect& Rect = ViewportsPanel->GetViewRect(ViewIndex);
 	const FVector2 ViewLocalMouse(
 		LocalMousePosition.X - Rect.X,
 		LocalMousePosition.Y - Rect.Y);
@@ -1386,7 +1385,7 @@ bool UEditorEngine::CreatePIEWindow()
 
 	PIEWindow = std::move(NewWindow);
 	PIESwapchain = MakeUnique<FSwapchain>(GetEngineLoop().GetRenderDevice(), PIEWindow.get());
-	PIETargets.Release();
+	PIEWindowViewport.ReleaseRenderTargets();
 	PIEWindow->Show();
 	return true;
 }
@@ -1396,10 +1395,10 @@ void UEditorEngine::DestroyPIEWindow()
 	if (!PIEWindow)
 		return;
 
-	PIEWindowViewport.SetRect({});
+	PIEWindowViewport.SetOutputSize({});
 	PIEWindowViewport.EndPlay();
 
-	PIETargets.Release();
+	PIEWindowViewport.ReleaseRenderTargets();
 	bPIEWindowRendered = false;
 
 	// Swapchain이 창 핸들을 출력 대상으로 쥐고 있으므로 창보다 먼저 놓는다.
@@ -1418,17 +1417,16 @@ bool UEditorEngine::UpdatePIEWindowTargets()
 	// 최소화 중에는 그릴 대상이 없다.
 	if (Width == 0 || Height == 0 || ::IsIconic(PIEWindow->GetHandle()))
 	{
-		PIEWindowViewport.SetRect({});
+		PIEWindowViewport.SetOutputSize({});
 		return false;
 	}
 
 	if (PIEWindow->CheckResized())
 		PIESwapchain->Resize(static_cast<int32>(Width), static_cast<int32>(Height));
 
-	PIETargets.Resize(Width, Height);
-
-	// PIE 창 View Rect는 원점 기준 렌더 타깃 크기와 같다.
-	PIEWindowViewport.SetRect({0.0f, 0.0f, static_cast<float>(Width), static_cast<float>(Height)});
+	// PIE 창 View 출력 크기는 창 클라이언트 크기와 같다.
+	PIEWindowViewport.SetOutputSize({static_cast<float>(Width), static_cast<float>(Height)});
+	PIEWindowViewport.EnsureRenderTargets();
 	return true;
 }
 
@@ -1441,20 +1439,14 @@ void UEditorEngine::CopyPIEWindowToBackbuffer()
 	// 백버퍼는 SRV가 없어 FXAA·Fog 입력으로 쓸 수 없으므로 오프스크린 결과를 통째로 복사한다.
 	// 창 크기 변경 직후 한 프레임은 크기가 어긋날 수 있어 그때는 건너뛴다.
 	FTexture2D* Backbuffer = BackbufferInfo.ColorRenderTargets[0].Texture;
-	if (!Backbuffer || !PIETargets.ViewColor ||
-		BackbufferInfo.ViewportSetting.Width != PIETargets.Width ||
-		BackbufferInfo.ViewportSetting.Height != PIETargets.Height)
+	const FSceneRenderTargets& Targets = PIEWindowViewport.GetRenderTargets();
+	if (!Backbuffer || !Targets.ViewColor ||
+		BackbufferInfo.ViewportSetting.Width != Targets.Width ||
+		BackbufferInfo.ViewportSetting.Height != Targets.Height)
 		return;
 
-	RenderCommand::CopyTexture(Backbuffer, PIETargets.ViewColor.get());
+	RenderCommand::CopyTexture(Backbuffer, Targets.ViewColor.get());
 	bPIEWindowRendered = true;
-}
-
-FTexture2D* UEditorEngine::GetFxaaTargetForView(const int32 ViewIndex) const
-{
-	if (ViewIndex == PIEWindowViewIndex)
-		return PIETargets.FxaaTemp.get();
-	return ViewportsPanel->GetFxaaTarget(ViewIndex);
 }
 
 

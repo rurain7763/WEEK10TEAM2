@@ -96,7 +96,7 @@ FEditorViewportClient& FViewportsPanel::GetEditorClient(const int32 ViewIndex) c
 void FViewportsPanel::SyncViewportRects()
 {
 	for (int32 ViewIndex = 0; ViewIndex < ViewCount; ++ViewIndex)
-		Slots[ViewIndex].Viewport.SetRect(ViewRects[ViewIndex]);
+		Slots[ViewIndex].Viewport.SetOutputSize({ViewRects[ViewIndex].Width, ViewRects[ViewIndex].Height});
 }
 
 void FViewportsPanel::InitializeDefaultViews()
@@ -210,19 +210,19 @@ void FViewportsPanel::UpdateInput(
 	if (InputState.CapturedViewIndex != InvalidViewIndex)
 		ActiveViewIndex = InputState.CapturedViewIndex;
 	if (!IsViewActive(ActiveViewIndex)) return;
-	// 외부 카메라가 그리는 View는 에디터 카메라 조작을 받지 않는다.
-	FViewport& Viewport = GetViewport(ActiveViewIndex);
-	if (Viewport.HasGameClient()) return;
 
+	// 활성 View의 Viewport가 지금 그리는 Client에 넘긴다. PIE View의 Game Client는 에디터 카메라 입력을 받지 않는다.
+	const FRect& Rect = ViewRects[ActiveViewIndex];
 	FViewportInput Input{};
+	Input.MousePosition = {LocalMousePosition.X - Rect.X, LocalMousePosition.Y - Rect.Y};
 	Input.DeltaTime = DeltaTime;
 	Input.MouseSensitivity = MouseSensitivity;
 	Input.MoveSpeed = InOutMoveSpeed;
 	Input.WheelDelta = WheelDelta;
-	Input.bCameraCaptured = FInputSystem::IsMouseDown(EMouseButton::Right) &&
-		InputState.CapturedViewIndex == ActiveViewIndex;
+	Input.bCaptured = InputState.CapturedViewIndex == ActiveViewIndex;
 	Input.bPointerOver = PointerViewIndex == ActiveViewIndex;
-	Viewport.GetEditorClient()->UpdateInput(Input, ViewRects[ActiveViewIndex]);
+	Input.bEnabled = true;
+	GetViewport(ActiveViewIndex).UpdateInput(Input);
 	InOutMoveSpeed = Input.MoveSpeed;
 }
 
@@ -254,11 +254,9 @@ bool FViewportsPanel::TryGetActiveViewRay(const FVector2 LocalMousePosition, FRa
 	return true;
 }
 
-// 네 View의 렌더 타깃을 최소 크기로 초기화한다.
+// 렌더 타깃은 View가 처음 보일 때 Viewport가 만든다.
 bool FViewportsPanel::Init()
 {
-	for (FViewSlot& Slot : Slots)
-		ResizeSlot(Slot, 1, 1);
 	return true;
 }
 
@@ -268,32 +266,19 @@ void FViewportsPanel::Tick(float DeltaTime)
 	(void)DeltaTime;
 }
 
-// 레이아웃 Rect에 맞춰 View 활성 상태와 타깃 크기를 갱신한다.
+// 레이아웃 Rect에 따른 View 활성 상태 갱신 및 렌더 타깃 준비
 void FViewportsPanel::SetView(const int32 ViewIndex, const bool bActive)
 {
-	assert(ViewIndex >= 0 && ViewIndex < 4);
+	assert(ViewIndex >= 0 && ViewIndex < ViewCount);
 	FViewSlot& Slot = Slots[ViewIndex];
 	const FRect& Rect = ViewRects[ViewIndex];
 	Slot.bActive = bActive && Rect.Width > 0.0f && Rect.Height > 0.0f;
 	if (!Slot.bActive)
+	{
 		return;
+	}
 
-	const uint32 Width = static_cast<uint32>(std::max(1.0f, Rect.Width));
-	const uint32 Height = static_cast<uint32>(std::max(1.0f, Rect.Height));
-	if (Width != Slot.RenderTargets.Width || Height != Slot.RenderTargets.Height)
-		ResizeSlot(Slot, Width, Height);
-}
-
-const FSceneRenderTargets& FViewportsPanel::GetRenderTargets(const int32 ViewIndex) const
-{
-	assert(ViewIndex >= 0 && ViewIndex < 4);
-	return Slots[ViewIndex].RenderTargets;
-}
-
-FTexture2D* FViewportsPanel::GetFxaaTarget(const int32 ViewIndex) const
-{
-	assert(ViewIndex >= 0 && ViewIndex < 4);
-	return Slots[ViewIndex].RenderTargets.FxaaTemp.get();
+	Slot.Viewport.EnsureRenderTargets();
 }
 
 // 마우스 위치에서 패널 원점을 빼 로컬 좌표로 바꾼다.
@@ -544,7 +529,8 @@ void FViewportsPanel::OnRender()
 	for (int32 ViewIndex = 0; ViewIndex < ViewCount; ++ViewIndex)
 	{
 		const FViewSlot& Slot = Slots[ViewIndex];
-		if (!Slot.bActive || !Slot.RenderTargets.ViewColor)
+		FTexture2D* ColorTarget = Slot.Viewport.GetColorTarget();
+		if (!Slot.bActive || !ColorTarget)
 		{
 			continue;
 		}
@@ -553,7 +539,7 @@ void FViewportsPanel::OnRender()
 		const FRect& Rect = ViewRects[ViewIndex];
 		const ImVec2 ViewMin{ ContentOrigin.x + Rect.X, ContentOrigin.y + Rect.Y };
 		const ImVec2 ViewMax{ ViewMin.x + Rect.Width, ViewMin.y + Rect.Height };
-		DrawList->AddImage(Slot.RenderTargets.ViewColor->GetSRV(), ViewMin, ViewMax);
+		DrawList->AddImage(ColorTarget->GetSRV(), ViewMin, ViewMax);
 	}
 	DrawList->PopClipRect();
 
@@ -884,10 +870,4 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 			DrawList->AddText({ ColumnRight[Column] - TextWidth, Y }, Line.Color, Text.c_str());
 		}
 	}
-}
-
-// View 크기에 맞춰 Color·Depth Texture와 렌더 정보를 재생성한다.
-void FViewportsPanel::ResizeSlot(FViewSlot& Slot, const uint32 Width, const uint32 Height)
-{
-	Slot.RenderTargets.Resize(Width, Height);
 }

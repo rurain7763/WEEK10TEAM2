@@ -64,12 +64,9 @@ public:
 	const FRect& GetViewRect(int32 ViewIndex) const;
 	// 활성 View의 패널 로컬 마우스 좌표를 역투영해 Ray로 반환한다. 마우스가 다른 View 위면 false다.
 	bool TryGetActiveViewRay(FVector2 LocalMousePosition, FRay& OutRay) const;
-	// Core가 계산한 View Rect에 맞춰 해당 Slot의 활성 상태와 렌더 타깃을 갱신한다.
+
+	// View 활성 상태 반영 및 Viewport의 출력 크기별 렌더 타깃 준비
 	void SetView(int32 ViewIndex, bool bActive);
-	// View별 텍스처 묶음. 출력 연결과 Clear/Load는 각 패스에서 구성한다.
-	const FSceneRenderTargets& GetRenderTargets(int32 ViewIndex) const;
-	// FXAA 결과를 임시로 받는 View별 텍스처. ColorTarget과 크기·포맷이 같다.
-	FTexture2D* GetFxaaTarget(int32 ViewIndex) const;
 
 	FVector2 GetContentSize() const { return {ContentSize.x, ContentSize.y}; }
 	FVector2 GetLocalMousePosition() const;
@@ -88,15 +85,12 @@ private:
 	FGizmo* Gizmo = nullptr;
 	struct FViewSlot
 	{
-		// View 하나의 Viewport·활성 상태·Color/Depth 타깃과 렌더 정보를 담는다.
+		// View별 Viewport와 이번 프레임의 활성 상태
 		FViewport Viewport;
 		bool bActive = false;
-		FSceneRenderTargets RenderTargets;
 	};
 
-	// Rect 크기가 바뀐 Slot의 Color/Depth Texture와 렌더 정보를 다시 만든다.
-	void ResizeSlot(FViewSlot& Slot, uint32 Width, uint32 Height);
-	// ViewRects를 바꾼 뒤 각 Viewport에 같은 Rect를 넣는다.
+	// ViewRects를 바꾼 뒤 각 Viewport에 같은 크기를 넣는다.
 	void SyncViewportRects();
 	// 콘솔 stat 명령으로 켜진 항목을 해당 View의 좌상단에 겹쳐 그린다.
 	void DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMin) const;

@@ -8,10 +8,13 @@
 class FGameViewportClient : public FViewportClient
 {
 public:
+    explicit FGameViewportClient(UWorld& InWorld) : World(&InWorld) {}
+    UWorld* GetWorld() const override { return World; }
     const FViewCamera& GetCamera() const override { return Camera; }
     // Forward는 정규화되어 있어야 하며 Roll은 버린다.
     void SetCamera(const FVector& Location, const FVector& Forward, const FCameraProjection& Projection, const FRect& Rect);
 
 private:
+    UWorld* World; // PlayWorld 비소유. 월드가 바뀌면 엔진이 Client를 새로 만든다.
     FViewCamera Camera{};
 };
