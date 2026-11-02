@@ -9,11 +9,22 @@
 
 using namespace ViewportCameraMath;
 
-FGameViewportClient& FViewport::BeginPlay()
+// 예전 패널 Slot과 같이 최소 1픽셀, 소수는 버린 정수 크기로 만든다.
+void FViewport::EnsureRenderTargets()
 {
-    if (!GameClient)
-        GameClient = MakeUnique<FGameViewportClient>();
-    return *GameClient;
+    if (!IsVisible())
+        return;
+    Targets.Resize(
+        static_cast<uint32>(std::max(1.0f, OutputSize.X)),
+        static_cast<uint32>(std::max(1.0f, OutputSize.Y)));
+}
+
+void FViewport::UpdateInput(FViewportInput& Input)
+{
+    FViewportClient* Client = GetActiveClient();
+    if (!Client || !IsVisible() || !Input.bEnabled)
+        return;
+    Client->UpdateInput(Input, GetOutputRect());
 }
 
 FViewportClient* FViewport::GetActiveClient() const
@@ -37,8 +48,8 @@ FViewCamera FViewport::GetRenderCamera() const
     if (Camera.Projection.Mode != EProjectionMode::Orthographic)
         return Camera;
 
-    const float AspectRatio = Rect.Width > 0.0f && Rect.Height > 0.0f
-        ? Rect.Width / Rect.Height : 1.0f;
+    const float AspectRatio = OutputSize.X > 0.0f && OutputSize.Y > 0.0f
+        ? OutputSize.X / OutputSize.Y : 1.0f;
     const float HalfWidth = Camera.Projection.OrthoWidth * 0.5f;
     const float HalfHeight = HalfWidth / AspectRatio;
     const FVector Position = Camera.Transform.Location;
@@ -59,7 +70,7 @@ const FViewport::FPreparedView& FViewport::PrepareView() const
 {
     const FViewCamera Camera = GetRenderCamera();
     Prepared.ViewProjection = BuildViewMatrix(Camera.Transform) *
-        BuildProjectionMatrix(Camera.Projection, Rect.Width / Rect.Height);
+        BuildProjectionMatrix(Camera.Projection, OutputSize.X / OutputSize.Y);
     Prepared.Frustum = ExtractFrustumPlanes(Prepared.ViewProjection);
     return Prepared;
 }
@@ -94,5 +105,5 @@ FMatrix FViewport::BuildBillboardMatrix(const FVector& WorldPosition, const floa
 
 FRay FViewport::Deproject(const FVector2 ViewLocalPosition) const
 {
-    return ::Deproject(GetRenderCamera(), ViewLocalPosition, {Rect.Width, Rect.Height});
+    return ::Deproject(GetRenderCamera(), ViewLocalPosition, OutputSize);
 }

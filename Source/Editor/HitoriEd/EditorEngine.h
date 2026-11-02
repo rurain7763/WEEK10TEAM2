@@ -102,8 +102,6 @@ private:
 	// PIE 창의 오프스크린 결과를 백버퍼로 복사한다. Present는 EndFrame에서 한다.
 	void CopyPIEWindowToBackbuffer();
 	bool IsPIEInWindow() const { return PIEWindow != nullptr; }
-	// View별 FXAA 임시 텍스처. 외부 View는 PIE 창 타깃을 쓴다.
-	FTexture2D* GetFxaaTargetForView(int32 ViewIndex) const;
 	// 화면 합성과 View 설정 보관으로 프레임을 마무리한다.
 	void EndFrame();
 	void UpdateEditorTabs();
@@ -177,7 +175,6 @@ private:
 	// New Editor Window(PIE) 모드에서만 존재한다. Swapchain이 창 핸들을 쓰므로 창보다 먼저 해제한다.
 	TUniquePtr<FWindow> PIEWindow;
 	TUniquePtr<FSwapchain> PIESwapchain;
-	FSceneRenderTargets PIETargets;
 	bool bPIEWindowRendered = false;
 
 	FVector UUIDLocation;

@@ -62,7 +62,7 @@ void FViewportRenderCollector::BuildRenderQueue(const FViewport& Viewport, FRend
     {
         CullForView(RenderObjects, Prepared.Frustum, VisibleIds);
     }
-    const FRect& Rect = Viewport.GetRect();
+    const FRect Rect = Viewport.GetOutputRect();
     const FViewCamera& ViewCamera = Viewport.GetCamera();
     const FMatrix Projection = BuildProjectionMatrix(
         ViewCamera.Projection, Rect.Width / Rect.Height);
