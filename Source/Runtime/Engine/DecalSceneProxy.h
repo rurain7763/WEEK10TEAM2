@@ -12,16 +12,16 @@ public:
 	FDecalSceneProxy(FScene* InScene, UDecalComponent* InComponent);
 	
 	void UpdateTransform();
-
 	void UpdateMaterial();
-
 	void UpdateOpacity();
+	void UpdateFadeAlpha();
 
 	FScene* GetScene() const;
 	UDecalComponent* GetComponent() const;
 	UMaterial* GetDecalMaterial() const;
 	const FMatrix& GetInvWorldMatrix() const;
 	float GetOpacity() const;
+	float GetFadeAlpha() const;
 
 private:
 	FScene* Scene = nullptr;
@@ -30,4 +30,5 @@ private:
 	UMaterial* Material = nullptr;
 	FMatrix InvWorld;
 	float Opacity;
+	float FadeAlpha;
 };

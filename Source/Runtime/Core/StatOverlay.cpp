@@ -99,6 +99,8 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 		Target = EStatFlags::Profile;
 	else if (EqualsIgnoreCase(Arg, "shadow"))
 		Target = EStatFlags::Shadow;
+	else if (EqualsIgnoreCase(Arg, "decal"))
+		Target = EStatFlags::Decal;
 
 	if (Target == EStatFlags::None)
 	{

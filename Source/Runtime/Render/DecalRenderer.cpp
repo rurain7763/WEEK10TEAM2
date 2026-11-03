@@ -17,7 +17,7 @@ bool FDecalRenderer::Init()
 	return true;
 }
 
-void FDecalRenderer::Render(const TArray<FDecalSceneProxy*>& InDecalProxies, const FMatrix& ViewProjection, FTexture2D* InDepthTexture, FTexture2D* InObjectMaskTexture)
+void FDecalRenderer::Render(const TArray<FDecalSceneProxy*>& InDecalProxies, const FMatrix& ViewProjection, FTexture2D* InDepthTexture, FTexture2D* InObjectMaskTexture, uint32& OutDrawCount)
 {
 	FMatrix InvViewProjection = ViewProjection.Inverse();
 
@@ -26,6 +26,7 @@ void FDecalRenderer::Render(const TArray<FDecalSceneProxy*>& InDecalProxies, con
 	RenderCommand::BindShaderResource(0, InDepthTexture, EShaderBindFlagBits::Pixel);
 	RenderCommand::BindShaderResource(1, InObjectMaskTexture, EShaderBindFlagBits::Pixel);
 
+	OutDrawCount = 0;
 	for (FDecalSceneProxy* DecalProxy : InDecalProxies)
 	{
 		UMaterial* DecalMaterial = DecalProxy->GetDecalMaterial();
@@ -38,11 +39,14 @@ void FDecalRenderer::Render(const TArray<FDecalSceneProxy*>& InDecalProxies, con
 		DecalConstants.InvViewProjection = InvViewProjection;
 		DecalConstants.InvWorld = DecalProxy->GetInvWorldMatrix();
 		DecalConstants.Opacity = DecalProxy->GetOpacity();
+		DecalConstants.FadeAlpha = DecalProxy->GetFadeAlpha();
 
 		RenderCommand::UpdateBufferData(ConstantBuffer.get(), &DecalConstants);
 		RenderCommand::BindShaderResource(2, DecalMaterial->Textures[0], EShaderBindFlagBits::Pixel);
 		RenderCommand::BindSamplerState(0, DecalMaterial->SamplerState, EShaderBindFlagBits::Pixel);
 		RenderCommand::Draw(3);
+
+		OutDrawCount++;
 	}
 
 	RenderCommand::UnbindShaderResource(0, EShaderBindFlagBits::Pixel);

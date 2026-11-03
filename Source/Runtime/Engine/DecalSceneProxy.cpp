@@ -24,6 +24,11 @@ void FDecalSceneProxy::UpdateOpacity()
 	Opacity = Component->GetOpacity();
 }
 
+void FDecalSceneProxy::UpdateFadeAlpha()
+{
+	FadeAlpha = Component->GetFadeAlpha();
+}
+
 FScene* FDecalSceneProxy::GetScene() const
 {
 	return Scene;
@@ -47,4 +52,9 @@ const FMatrix& FDecalSceneProxy::GetInvWorldMatrix() const
 float FDecalSceneProxy::GetOpacity() const
 {
 	return Opacity;
+}
+
+float FDecalSceneProxy::GetFadeAlpha() const
+{
+	return FadeAlpha;
 }

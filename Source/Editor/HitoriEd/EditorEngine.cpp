@@ -610,6 +610,7 @@ FSceneRenderSettings UEditorEngine::MakeSceneRenderSettings() const
 
 	return {
 		.bDrawPrimitives = Settings.bDrawPrimitives,
+		.bDrawDecals = Settings.bDrawDecals,
 		.bDrawShadows = Settings.bDrawShadows,
 		.ShadowFilter = Filter,
 		.bExponentialHeightFog = Settings.bExponentialHeightFog,
@@ -678,6 +679,8 @@ void UEditorEngine::HandleOnPIEWorldChanged(UWorld* OldWorld, UWorld* NewWorld)
 	FLuaScriptSystem::Get().StopAllCoroutines();
 
 	PlayWorld = NewWorld;
+
+	OutlinerPanel->SetWorld(NewWorld);
 }
 
 void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, const FSceneRenderTargets& Targets, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue)
@@ -1225,8 +1228,11 @@ void UEditorEngine::StartPlayInEditorSession()
 	PlayWorld = CreatePIEWorldByDuplication(PIEContext, EditorWorld);
 	PIEContext.OnWorldChanged.AddRaw(this, &UEditorEngine::HandleOnPIEWorldChanged);
 
+	ResetSceneSelection();
 	if (PlayWorld)
 	{
+		OutlinerPanel->SetWorld(PlayWorld);
+
 		GameViewport = NewObject<UGameViewportClient>(nullptr, FName("MainViewport"));
 
 		PlayWorld->BeginPlay();
@@ -1247,8 +1253,6 @@ void UEditorEngine::StartPlayInEditorSession()
 			PlayerController->UpdateCamera(0.0f);
 		}
 	}
-
-	ResetSceneSelection();
 }
 
 UWorld* UEditorEngine::CreatePIEWorldByDuplication(FWorldContext& PIEContext, UWorld* InEditorWorld)
@@ -1272,6 +1276,8 @@ void UEditorEngine::EndPlayMap()
 	GameViewport = nullptr;
 
 	PIEViewIndex = InvalidViewIndex;
+
+	OutlinerPanel->SetWorld(EditorWorld);
 }
 
 bool UEditorEngine::CreatePIEWindow()

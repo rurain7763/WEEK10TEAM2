@@ -556,6 +556,7 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 		Lines.Add({std::format("  Process {:.2f} MB",
 			static_cast<double>(FStatOverlay::GetProcessWorkingSetBytes()) / BytesPerMegabyte), ValueColor});
 	}
+
 	if (FStatOverlay::IsEnabled(EStatFlags::Shadow))
 	{
 		Lines.Add({ "Shadow", TitleColor });
@@ -570,6 +571,15 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 		Lines.Add({ std::format("  Cached Maps {}", shadow.NumCachedShadowMaps), ValueColor });
 		Lines.Add({ std::format("  Memory         {:.2f} MB",
 			static_cast<int64>(shadow.ShadowMapMemoryBytes) / BytesPerMegabyte), ValueColor });
+	}
+
+	if (FStatOverlay::IsEnabled(EStatFlags::Decal))
+	{
+		const FDecalStats& Decal = FStatOverlay::GetDecalStats();
+
+		Lines.Add({ "Decal", TitleColor });
+		Lines.Add({ std::format("  Decal Count: {}", Decal.DrawCount), ValueColor});
+		Lines.Add({ std::format("  Rendering Time: {:.2f} ms", Decal.DrawTime), ValueColor});
 	}
 
 	struct FProfileStatLine

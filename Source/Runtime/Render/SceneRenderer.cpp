@@ -19,6 +19,9 @@
 #include "Text/TextRenderer.h"
 #include "UObject/UObjectIterator.h"
 #include "Render/DecalRenderer.h"
+#include "Core/Stats/LightweightStats.h"
+
+DECLARE_CYCLE_STAT("Decal Draw Time", STAT_DecalDrawTime);
 
 FSceneRenderer::FSceneRenderer() = default;
 
@@ -115,14 +118,13 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 		);
 	}
 
-
 	FStatOverlay::SetShadowStats(ShadowStats);
 
 	Renderer->RenderQueueSorting(RenderQueue, SceneView.ViewProjection, SceneView.Location);
 
 	RenderSurfacePrepass(SceneView, Settings, Targets);
 
-	RenderDecalPass(SceneView, World, Targets);
+	RenderDecalPass(SceneView, Settings, World, Targets);
 
 	// 1. 불투명·반투명 Pass (Linear 씬 컬러)
 	RenderOpaquePass(SceneView, Settings, World, Targets, RenderQueue, Lighting.Directional);
@@ -266,7 +268,7 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 	RenderCommand::EndRenderPass();
 }
 
-void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const UWorld& ViewWorld, const FSceneRenderTargets& Targets)
+void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets)
 {
 	FTexture2D* ObjectMaskTexture = Targets.ObjectMask.get();
 	FTexture2D* DepthTexture = Targets.Depth.get();
@@ -283,11 +285,25 @@ void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const UWorld& 
 	PassInfo.ViewportSetting.Height = Targets.Height;
 
 	RenderCommand::BeginRenderPass(PassInfo);
-	DecalRenderer->Render(ViewWorld.GetScene().GetDecals(), SceneView.ViewProjection, DepthTexture, ObjectMaskTexture);
+
+	FDecalStats DecalStats;
+	if (Settings.bDrawDecals)
+	{
+		SCOPE_CYCLE_COUNTER(STAT_DecalDrawTime);
+		DecalRenderer->Render(ViewWorld.GetScene().GetDecals(), SceneView.ViewProjection, DepthTexture, ObjectMaskTexture, DecalStats.DrawCount);
+	}
+
+	const FCycleStatData* CS = FStatRegistry::Find(STAT_DecalDrawTime);
+	if (CS)
+	{
+		DecalStats.DrawTime = DecalStats.DrawCount ? CS->GetLastMs() : 0.f;
+	}
 
 	RenderCommand::UnbindShaderResource(0, EShaderBindFlagBits::Pixel);
 
 	RenderCommand::EndRenderPass();
+
+	FStatOverlay::SetDecalStats(DecalStats);
 }
 
 void FSceneRenderer::DrawWorldText(const FSceneView& SceneView, const UWorld& ViewWorld)

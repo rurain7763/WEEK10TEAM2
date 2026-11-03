@@ -7,7 +7,8 @@ cbuffer DecalConstants : register(b0)
     matrix InvViewProjection;
     matrix InvWorld;
     float Opacity;
-    float3 DecalConstantsPadding;
+    float FadeAlpha;
+    float2 DecalConstantsPadding;
 };
 
 struct PS_INPUT
@@ -64,7 +65,7 @@ float4 mainPS(PS_INPUT Input) : SV_TARGET
     DecalUV.y = 1.0 - DecalUV.y;
     
     float4 FinalColor = DecalTexture.Sample(DecalSampler, DecalUV);
-    FinalColor.a *= Opacity;
+    FinalColor.a *= Opacity * FadeAlpha;
     
     return FinalColor;
 }

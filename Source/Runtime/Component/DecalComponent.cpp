@@ -1,12 +1,46 @@
 #include "EnginePCH.h"
 #include "DecalComponent.h"
 #include "Engine/DecalSceneProxy.h"
+#include "GameFramework/Actor.h"
+
+UDecalComponent::UDecalComponent()
+{
+	PrimaryComponentTick.bCanEverTick = true;
+}
 
 void UDecalComponent::PostLoad()
 {
 	Proxy->UpdateMaterial();
 	Proxy->UpdateTransform();
 	Proxy->UpdateOpacity();
+	Proxy->UpdateFadeAlpha();
+}
+
+void UDecalComponent::TickComponent(float DeltaTime)
+{
+	Super::TickComponent(DeltaTime);
+
+	float FadeIn = 1.f;
+	float FadeOut = 1.f;
+	if (FadeInDuration > 0.f)
+	{
+		FadeIn = (ElapsedTime - FadeInStartDelay) / FadeInDuration;
+	}
+
+	if (FadeDuration > 0.f)
+	{
+		FadeOut = 1.0f - ((ElapsedTime - FadeStartDelay) / FadeDuration);
+	}
+
+	FadeAlpha = FMath::Clamp(FMath::Min(FadeIn, FadeOut), 0.f, 1.f);
+	ElapsedTime += DeltaTime;
+
+	Proxy->UpdateFadeAlpha();
+
+	if (!IsPersistent() && bDestroyOwnerAfterFade && ElapsedTime >= FadeStartDelay + FadeDuration)
+	{
+		GetOwner()->Destroy();
+	}
 }
 
 void UDecalComponent::SetDecalMaterial(UMaterial* InMaterial)
@@ -37,6 +71,11 @@ void UDecalComponent::SetOpacity(float InOpacity)
 float UDecalComponent::GetOpacity() const
 {
 	return Opacity;
+}
+
+float UDecalComponent::GetFadeAlpha() const
+{
+	return FadeAlpha;
 }
 
 void UDecalComponent::OnTransformDirty()
@@ -74,6 +113,7 @@ FDecalSceneProxy* UDecalComponent::CreateSceneProxy(FScene* InScene)
 	Proxy->UpdateMaterial();
 	Proxy->UpdateTransform();
 	Proxy->UpdateOpacity();
+	Proxy->UpdateFadeAlpha();
 
 	return Proxy;
 }

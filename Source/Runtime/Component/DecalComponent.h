@@ -14,12 +14,20 @@ class UDecalComponent : public USceneComponent
 	REFLECT_START(ClassName)
 		PROPERTY(DecalMaterial)
 		PROPERTY(Opacity)
+		PROPERTY(FadeInStartDelay)
+		PROPERTY(FadeInDuration)
+		PROPERTY(FadeStartDelay)
+		PROPERTY(FadeDuration)
+		PROPERTY(bDestroyOwnerAfterFade)
 	REFLECT_END()
 
 public:
+	UDecalComponent();
 	virtual ~UDecalComponent() = default;
 
 	virtual void PostLoad() override;
+
+	virtual void TickComponent(float DeltaTime) override;
 
 	void SetDecalMaterial(UMaterial* InMaterial);
 
@@ -28,6 +36,7 @@ public:
 	void SetOpacity(float InOpacity);
 
 	float GetOpacity() const;
+	float GetFadeAlpha() const;
 
 	void OnTransformDirty() override;
 	void PostEditChangeProperty(const FProperty& Property) override;
@@ -39,10 +48,24 @@ public:
 	void DestroySceneProxy();
 
 	void DrawDebug(FLineBatcher* LineBatcher) const;
+	
+	inline bool IsPersistent() const
+	{
+		return FadeStartDelay <= 0.f && FadeDuration <= 0.f;
+	}
 
 private:
 	FDecalSceneProxy* Proxy = nullptr;
 
 	UMaterial* DecalMaterial = nullptr;
 	float Opacity = 1.0f;
+
+	float FadeInStartDelay = 0.f;
+	float FadeInDuration = 0.f;
+	float FadeStartDelay = 0.f;
+	float FadeDuration = 0.f;
+	bool bDestroyOwnerAfterFade = true;
+
+	float ElapsedTime = 0.f;
+	float FadeAlpha = 1.f;
 };
