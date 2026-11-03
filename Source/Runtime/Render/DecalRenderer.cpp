@@ -147,6 +147,12 @@ void FDecalRenderer::OnRender(const UWorld& World, const FSceneView& SceneView, 
         RenderCommand::BindShaderResource(0, Albedo, EShaderBindFlagBits::Pixel);
         RenderCommand::BindSamplerState(0, Material->SamplerState, EShaderBindFlagBits::Pixel);
 
+        // 미지정 Normal의 기존 평면 노멀 대체
+        UTexture2D* Normal = Material->Textures.Num() > 1 && Material->Textures[1]
+            ? Material->Textures[1]
+            : UAssetManager::GetAssetByPath<UTexture2D>("FlatNormalTexture");
+        RenderCommand::BindShaderResource(1, Normal, EShaderBindFlagBits::Pixel, true);
+
         // 음수 스케일의 면 방향 반전 보정
         const bool bMirrored = Constants.DecalToWorld.Determinant() < 0.0f;
         RenderCommand::SetRasterizerState(

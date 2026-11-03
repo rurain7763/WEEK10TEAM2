@@ -237,7 +237,7 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 void UAssetManager::LoadAsset(const FString& Key, const FString& Path)
 {
 	FString Extension = PathUtils::ToUtf8(PathUtils::FromUtf8(Path).extension());
-	if (Extension == ".png")
+	if (Extension == ".png" || Extension == ".jpg" || Extension == "jpeg")
 	{
 		if (UTexture2D* Texture = LoadTexture(Path))
 		{
