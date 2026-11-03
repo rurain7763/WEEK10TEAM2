@@ -1062,7 +1062,7 @@ FPSOutput mainPS(FPSInput Input)
 #endif
     
     Output.Color = FinalColor;
-    Output.Normal = float4(N, 0.f);
+    Output.Normal = float4(normalize(WorldNormal), 0.f);
     Output.ObjectMask = ObjectMask;
     
     return Output;

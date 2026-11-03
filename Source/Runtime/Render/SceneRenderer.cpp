@@ -115,7 +115,6 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 		);
 	}
 
-	Renderer->BindShadowForShading();
 
 	FStatOverlay::SetShadowStats(ShadowStats);
 
@@ -251,6 +250,7 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 		// 불투명을 먼저 그리고 반투명을 먼 것부터 그린다.
 		// Grid는 깊이를 쓰지 않는 반투명 위에도 겹칠 수 있지만, 언리얼의 에디터 프리미티브처럼 Overlay Pass에서 마지막에 합성한다.
 		RenderCommand::BindShaderResource(4, Targets.DecalTexture.get(), EShaderBindFlagBits::Pixel);
+		Renderer->BindShadowForShading();
 		Renderer->RenderOpaque();
 		RenderCommand::UnbindShaderResource(4, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 

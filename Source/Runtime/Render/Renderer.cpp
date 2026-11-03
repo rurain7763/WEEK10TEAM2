@@ -70,11 +70,13 @@ bool FRenderer::Init()
 	};
 	SurfaceStaticPipeline.Shader = FRenderResourceManager::RegisterProgram("Surface_Static", SurfaceStaticSPDesc);
 
-	FShaderProgramDesc SurfaceSkinningSPDesc = SurfaceStaticSPDesc;
+	FShaderProgramDesc SurfaceSkinningSPDesc;
+	SurfaceSkinningSPDesc.Path = "Resources/Shader/SurfaceShader.hlsl";
+
 	SurfaceSkinningSPDesc.Defines = { 
 		{ "USE_SKINNING", "1" } 
 	};
-	SurfaceStaticSPDesc.InputLayout = {
+	SurfaceSkinningSPDesc.InputLayout = {
 		{ "POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,    0, static_cast<UINT>(offsetof(FVertexPNCT, Position)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, static_cast<UINT>(offsetof(FVertexPNCT, Normal)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "TANGENT",      0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(FVertexPNCT, Tangent)), D3D11_INPUT_PER_VERTEX_DATA, 0 },

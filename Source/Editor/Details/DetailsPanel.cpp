@@ -202,9 +202,10 @@ namespace
 		return isChanged;
 	}
 
-	void DrawTextureSlot(UMaterial** MaterialPtr, int32 SlotIndex)
+	bool DrawTextureSlot(UMaterial** MaterialPtr, int32 SlotIndex)
 	{
 		const float ThumbnailSize = 64.0f;
+		bool bChaged = false;
 
 		UMaterial* Material = *MaterialPtr;
 		UTexture2D* Texture = nullptr;
@@ -257,6 +258,8 @@ namespace
 
 					Material->Textures[SlotIndex] = DroppedTexture;
 					Texture = DroppedTexture;
+
+					bChaged = true;
 				}
 			}
 			ImGui::EndDragDropTarget();
@@ -278,6 +281,7 @@ namespace
 		ImGui::EndGroup();
 
 		ImGui::PopID();
+		return bChaged;
 	}
 
 	bool DrawTextureProperty(UTexture2D** TexturePtr)
@@ -341,10 +345,10 @@ namespace
 		return AssetPath.stem().string();
 	}
 
-	void DrawFontSlot(UObject* Owner, UFont** FontPtr)
+	bool DrawFontSlot(UObject* Owner, UFont** FontPtr)
 	{
 		UFont* Current = *FontPtr;
-
+		bool bChanged = false;
 		FString CurrentPath = Current ? Current->GetPath() : "";
 		FString CurrentFileName = Current ? GetAssetDisplayName(CurrentPath) : "None";
 
@@ -376,9 +380,12 @@ namespace
 
 					// 메모리를 직접 바꾸지 않고 SetFont를 거친다
 					if (UTextRenderComponent* TextComponent = Cast<UTextRenderComponent>(Owner))
+					{
 						TextComponent->SetFont(*Itr);
+					}
 					else
 						*FontPtr = *Itr;
+					bChanged = true;
 				}
 				ImGui::PopID();
 				if (bSelected)
@@ -386,12 +393,13 @@ namespace
 			}
 			ImGui::EndCombo();
 		}
+		return bChanged;
 	}
 
-	void DrawMeshSlot(UObject* Owner, UStaticMesh** StaticMeshPtr)
+	bool DrawMeshSlot(UObject* Owner, UStaticMesh** StaticMeshPtr)
 	{
 		UStaticMesh* Current = *StaticMeshPtr;
-
+		bool bChanged = false;
 		FString CurrentPath = Current ? Current->GetPath() : "";
 		FString CurrentFileName = Current ? GetAssetDisplayName(CurrentPath) : "None";
 
@@ -441,6 +449,7 @@ namespace
 						MeshComponent->SetStaticMesh(Item.Mesh);
 					else
 						*StaticMeshPtr = Item.Mesh;
+					bChanged = true;
 				}
 				ImGui::PopID();
 				if (bSelected)
@@ -448,13 +457,17 @@ namespace
 			}
 			ImGui::EndCombo();
 		}
+		return bChanged;
+
 	}
 
-	void DrawSkeletalMeshSlot(UObject* Owner, USkeletalMesh** MeshPtr)
+	bool DrawSkeletalMeshSlot(UObject* Owner, USkeletalMesh** MeshPtr)
 	{
 		USkeletalMesh* Current = *MeshPtr;
+		// 만일 리소스 핫리로드를 구현해서, 리스트를 바꿔야하면 해당 로직 후 아래 bChaged=true;
+		bool bChanged = false;
 		const FString Preview = Current ? GetAssetDisplayName(Current->GetPath()) : "None";
-		if (!ImGui::BeginCombo("##SkeletalMesh", Preview.c_str())) return;
+		if (!ImGui::BeginCombo("##SkeletalMesh", Preview.c_str())) return false;
 
 		auto SelectMesh = [&](USkeletalMesh* Mesh)
 		{
@@ -462,6 +475,7 @@ namespace
 				Component->SetSkeletalMesh(Mesh);
 			else
 				*MeshPtr = Mesh;
+			bChanged = true;
 		};
 		if (ImGui::Selectable("None", Current == nullptr)) SelectMesh(nullptr);
 
@@ -482,6 +496,7 @@ namespace
 			ImGui::PopID();
 		}
 		ImGui::EndCombo();
+		return bChanged;
 	}
 
 	bool DrawSequenceSlot(UObject* Owner, ULevelSequence** SequencePtr)
@@ -1072,7 +1087,8 @@ namespace
 
 			if (Property.Class == UMaterial::StaticClass())
 			{
-				DrawTextureSlot(reinterpret_cast<UMaterial**>(ObjPtr), 0);
+				bChanged = DrawTextureSlot(reinterpret_cast<UMaterial**>(ObjPtr), 0);
+				
 			}
 			else if (Property.Class == UTexture2D::StaticClass())
 			{
@@ -1080,15 +1096,15 @@ namespace
 			}
 			else if (Property.Class == UFont::StaticClass())
 			{
-				DrawFontSlot(Object, reinterpret_cast<UFont**>(ObjPtr));
+				bChanged = DrawFontSlot(Object, reinterpret_cast<UFont**>(ObjPtr));
 			}
 			else if (Property.Class == UStaticMesh::StaticClass())
 			{
-				DrawMeshSlot(Object, reinterpret_cast<UStaticMesh**>(ObjPtr));
+				bChanged = DrawMeshSlot(Object, reinterpret_cast<UStaticMesh**>(ObjPtr));
 			}
 			else if (Property.Class == USkeletalMesh::StaticClass())
 			{
-				DrawSkeletalMeshSlot(Object, reinterpret_cast<USkeletalMesh**>(ObjPtr));
+				bChanged = DrawSkeletalMeshSlot(Object, reinterpret_cast<USkeletalMesh**>(ObjPtr));
 			}
 			else if (Property.Class == ULevelSequence::StaticClass())
 			{

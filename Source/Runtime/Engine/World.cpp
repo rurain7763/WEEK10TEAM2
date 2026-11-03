@@ -425,7 +425,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 
 						FRenderPacket& Packet = Out.Packets.AddDefaulted_GetRef();   // 조각 전용 배열에 추가
 						Packet.Proxy = Proxy;
-						Packet.Geometry.SetVertexBuffers(Packet.Geometry.VertexBuffers, CachedLOD.VertexBufferCount);
+						Packet.Geometry.SetVertexBuffers(CachedLOD.VertexBuffers, CachedLOD.VertexBufferCount);
 						Packet.Geometry.IndexBuffer = CachedLOD.IndexBuffer;
 						Packet.Material = Section.Material;
 						Packet.Geometry.StartIndex = Section.StartIndex;
