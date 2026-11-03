@@ -17,8 +17,8 @@ public:
 	bool Init();
 
 	void Render(const TArray<FDecalSceneProxy*>& InDecalProxies, const FMatrix& ViewProjection,
-		FTexture2D* InDepthTexture, FTexture2D* InObjectMaskTexture, uint32& OutDrawCount, bool bGameView);
-
+		FTexture2D* InDepthTexture, FTexture2D* InObjectMaskTexture, FTexture2D* InNormalTexture,
+		uint32& OutDrawCount, bool bGameView);
 private:
 	// 볼륨 투영 변환 및 페이드가 반영된 데칼 색상
 	struct FDecalConstants
@@ -28,9 +28,13 @@ private:
 		FMatrix WorldViewProjection;
 		FLinearColor Tint;
 		FVector2 InvTargetSize;
-		FVector2 Padding;
+		FVector2 UVScrollOffset;
+		uint32 bAffectBaseColor;
+		uint32 bAffectNormal;
+		uint32 bFlipNormalGreen;
+		uint32 DecalPadding;
 	};
-	static_assert(sizeof(FDecalConstants) == 224);
+	static_assert(sizeof(FDecalConstants) == 240);
 
 	FPipelineState PipelineState;
 	TUniquePtr<FConstantBuffer> ConstantBuffer;

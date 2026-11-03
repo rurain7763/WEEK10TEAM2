@@ -272,6 +272,7 @@ void FRenderer::DrawStaticGroups()
 
 	UMaterial* BoundMaterial = nullptr;
 	int8 LastReceiveShadow = -1;
+	int8 LastUseSkinning = -1;
 
 	for (const FStaticDrawGroup* Group : StaticGroups)
 	{
@@ -285,13 +286,16 @@ void FRenderer::DrawStaticGroups()
 			const bool bReceiveShadow = Item.Proxy ? Item.Proxy->IsReceiveShadow() : true;
 			const bool bUseSkinning = Item.Proxy ? Item.Proxy->IsUsingSkinning() : false;
 			const int8 CurrentRS = bReceiveShadow ? 1 : 0;
+			const int8 CurrentSkinning = bUseSkinning ? 1 : 0;
 			const bool bMaterialChanged = (Group->Material != BoundMaterial);
 			const bool bShadowChanged = (CurrentRS != LastReceiveShadow);
+			const bool bSkinningChanged = CurrentSkinning != LastUseSkinning;
 
-			if (bMaterialChanged || bShadowChanged)
+			if (bMaterialChanged || bShadowChanged || bSkinningChanged)
 			{
 				BoundMaterial = Group->Material;
 				LastReceiveShadow = CurrentRS;
+				LastUseSkinning = CurrentSkinning;
 				BindMaterial(BoundMaterial, bReceiveShadow, bUseSkinning);
 				if (bMaterialChanged)
 				{
@@ -311,10 +315,9 @@ void FRenderer::DrawStaticGroups()
 				UpdatePerObjectConstants(Item.Proxy->GetLocalToWorld(), Item.Proxy->GetNormalMatrix(), Item.Proxy->GetObjectMask());
 			}
 
-			if (Item.Proxy && Item.Proxy->IsUsingSkinning())
+			if (Item.Proxy)
 			{
-				ID3D11ShaderResourceView* BoneMatricesSRV = Item.Proxy->GetBoneMatricesSRV();
-				RenderCommand::GetContext()->VSSetShaderResources(13, 1, &BoneMatricesSRV);
+				Item.Proxy->BindSRVs();
 			}
 
 			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
@@ -421,6 +424,7 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End)
 	LastIndexBuffer = nullptr;
 	LastMaterial = nullptr;
 	int8 LastReceiveShadow = -1;
+	int8 LastUseSkinning = -1;
 
 	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 	RenderCommand::BindConstantBuffer(3, LightingCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
@@ -444,7 +448,8 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End)
 		const bool bReceiveShadow = RenderPacket.Proxy ? RenderPacket.Proxy->IsReceiveShadow() : true;
 		const bool bUseSkinning = RenderPacket.Proxy ? RenderPacket.Proxy->IsUsingSkinning() : false;
 		const int8 CurrentRS = bReceiveShadow ? 1 : 0;
-		if (RenderPacket.Material != LastMaterial || CurrentRS != LastReceiveShadow) 
+		const int8 CurrentSkinning = bUseSkinning ? 1 : 0;
+		if (RenderPacket.Material != LastMaterial || CurrentRS != LastReceiveShadow || CurrentSkinning != LastUseSkinning)
 		{
 			BindMaterial(RenderPacket.Material, bReceiveShadow, bUseSkinning);
 		}
@@ -464,16 +469,16 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End)
 			UpdatePerObjectConstants(RenderPacket);
 		}
 
-		if (RenderPacket.Proxy && RenderPacket.Proxy->IsUsingSkinning())
+		if (RenderPacket.Proxy)
 		{
-			ID3D11ShaderResourceView* BoneMatricesSRV = RenderPacket.Proxy->GetBoneMatricesSRV();
-			RenderCommand::GetContext()->VSSetShaderResources(13, 1, &BoneMatricesSRV);
+			RenderPacket.Proxy->BindSRVs();
 		}
 
 		RenderCommand::DrawIndexed(RenderPacket.Geometry.IndexCount, RenderPacket.Geometry.StartIndex);
 
 		LastMaterial = RenderPacket.Material;
 		LastReceiveShadow = CurrentRS;
+		LastUseSkinning = CurrentSkinning;
 	}
 }
 
@@ -585,15 +590,16 @@ FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion()
 		else
 		{
 			RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
-			UpdatePerObjectConstants(*Draw.Packet);   // 측정 전용 폴백이라 매번 계산한다
+			// 패킷이 없는 스태틱 묶음도 포함하는 측정용 행렬 폴백
+			const uint32 ObjectMask = Draw.Proxy ? Draw.Proxy->GetObjectMask() : 0u;
+			UpdatePerObjectConstants(*Draw.World, MakeNormalMatrix(*Draw.World), ObjectMask);
 		}
 
 		ID3D11Query* Query = OcclusionQueries[Index].Get();
 		Context->Begin(Query);
-		if (Draw.Proxy && Draw.Proxy->IsUsingSkinning())
+		if (Draw.Proxy)
 		{
-			ID3D11ShaderResourceView* BoneMatricesSRV = Draw.Proxy->GetBoneMatricesSRV();
-			RenderCommand::GetContext()->VSSetShaderResources(13, 1, &BoneMatricesSRV);
+			Draw.Proxy->BindSRVs();
 		}
 		RenderCommand::DrawIndexed(Draw.IndexCount, Draw.StartIndex);
 		Context->End(Query);
@@ -787,7 +793,7 @@ void FRenderer::UpdatePerObjectConstants(const FRenderPacket& RenderPacket)
 
 void FRenderer::UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix, uint32 ObjectMask)
 {
-	FPerObjectConstants Constants;
+	FPerObjectConstants Constants{};
 	Constants.World = World;
 	Constants.NormalMatrix = NormalMatrix;
 	Constants.ObjectMask = ObjectMask;

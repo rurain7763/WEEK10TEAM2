@@ -1,5 +1,4 @@
 #include "EnginePCH.h"
-#include "Component/DecalComponent.h"
 #include "World.h"
 #include "Level.h"
 
@@ -131,18 +130,12 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 			Scene.AddPrimitive(Primitive);
 			PhysicsScene.AddPrimitive(Primitive);
 		}
-		else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(Component))
-		{
-			Scene.AddDecal(DecalComponent);
-		}
 		else if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
-		{
 			Scene.AddFogInfo(Fog->GetUUID(), Fog->GetFogInfo());
-		}
 		else if (ULightComponentBase* Light = Cast<ULightComponentBase>(Component))
-		{
 			Scene.AddLight(Light);
-		}
+		else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
+			Scene.AddDecal(Decal);
 	}
 
 	// 4. Level->Actors에 등록
@@ -618,10 +611,6 @@ bool UWorld::DestroyActor(AActor* Actor)
 			Scene.RemovePrimitive(Primitive);
 			PhysicsScene.RemovePrimitive(Primitive);
 		}
-		else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(Component))
-		{
-			Scene.RemoveDecal(DecalComponent);
-		}
 		else if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 		{
 			Scene.RemoveFogInfo(Fog->GetUUID());
@@ -629,6 +618,10 @@ bool UWorld::DestroyActor(AActor* Actor)
 		else if (ULightComponentBase* Light = Cast<ULightComponentBase>(Component))
 		{
 			Scene.RemoveLight(Light);
+		}
+		else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
+		{
+			Scene.RemoveDecal(Decal);
 		}
 	}
 
@@ -644,10 +637,9 @@ bool UWorld::DestroyActor(AActor* Actor)
 		PlayerController->NotifyActorDestroyed(Actor);
 	}
 
-	// 액터 메모리 해제 이전의 외부 참조 정리 통지
-	OnActorDestroyed.Broadcast(Actor);
-
 	// 4. Actor 삭제
+	// Actor destruction notification
+	OnActorDestroyed.Broadcast(Actor);
 	delete Actor;
 
 	HTR_LOG(Info, "Destroy Actor : {} UUID {}", ActorName, ActorUUID);
@@ -827,18 +819,12 @@ void UWorld::PostDuplicate(bool bDuplicateForPIE)
 				Scene.AddPrimitive(Primitive);
 				PhysicsScene.AddPrimitive(Primitive);
 			}
-			else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
-			{
-				Scene.AddDecal(Decal);
-			}
 			else if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
-			{
 				Scene.AddFogInfo(Fog->GetUUID(), Fog->GetFogInfo());
-			}
 			else if (ULightComponentBase* Light = Cast<ULightComponentBase>(Component))
-			{
 				Scene.AddLight(Light);
-			}
+			else if (UDecalComponent* Decal = Cast<UDecalComponent>(Component))
+				Scene.AddDecal(Decal);
 		}
 
 		NewActorList.Add(Actor);   // Tick 등록은 BeginPlay에서 함

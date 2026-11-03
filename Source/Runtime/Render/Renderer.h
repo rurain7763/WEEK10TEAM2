@@ -23,9 +23,10 @@ struct FPerObjectConstants
 {
 	FMatrix World;
 	FMatrix NormalMatrix;
-	uint32 ObjectMask;
-	uint32 Padding[3];
+	uint32 ObjectMask = 0;
+	uint32 Padding[3]{};
 };
+static_assert(sizeof(FPerObjectConstants) == 144);
 static_assert(sizeof(FPerObjectConstants) <= ObjectSlotBytes);
 
 struct FViewConstants
@@ -40,10 +41,14 @@ inline FMatrix MakeNormalMatrix(const FMatrix& World) { return World.Inverse().G
 
 inline void WriteObjectSlot(uint8* SlotBase, uint32 Slot, const FMatrix& World, const FMatrix& NormalMatrix, uint32 ObjectMask)
 {
+	// 슬롯 경로와 개별 버퍼 경로의 동일한 전체 상수 초기화
+	const FPerObjectConstants Constants{
+		.World = World,
+		.NormalMatrix = NormalMatrix,
+		.ObjectMask = ObjectMask,
+	};
 	uint8* Dest = SlotBase + static_cast<size_t>(Slot) * ObjectSlotBytes;
-	std::memcpy(Dest + offsetof(FPerObjectConstants, World), &World, sizeof(FMatrix));
-	std::memcpy(Dest + offsetof(FPerObjectConstants, NormalMatrix), &NormalMatrix, sizeof(FMatrix));
-	std::memcpy(Dest + offsetof(FPerObjectConstants, ObjectMask), &ObjectMask, sizeof(ObjectMask));
+	std::memcpy(Dest, &Constants, sizeof(Constants));
 }
 
 struct FSortEntry

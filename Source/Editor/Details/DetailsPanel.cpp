@@ -1441,6 +1441,21 @@ namespace
 		Material = Decal->GetDecalMaterial();
 		if (!Material)	return;
 
+		// 실제 변경 시 편집용 인스턴스를 확보하는 채널 설정
+		bool bAffectBaseColor = Material->bAffectBaseColor;
+		if (ImGui::Checkbox("Affect Base Color", &bAffectBaseColor))
+		{
+			Material = GetEditableDecalMaterial(Decal);
+			Material->bAffectBaseColor = bAffectBaseColor;
+		}
+
+		bool bAffectNormal = Material->bAffectNormal;
+		if (ImGui::Checkbox("Affect Normal", &bAffectNormal))
+		{
+			Material = GetEditableDecalMaterial(Decal);
+			Material->bAffectNormal = bAffectNormal;
+		}
+
 		// 기존 텍스처 슬롯의 썸네일 및 드래그 앤 드롭 재사용
 		ImGui::TextUnformatted("Albedo");
 		DrawTextureSlot(&Material, 0);
@@ -1459,20 +1474,20 @@ namespace
 			Material->BaseColor = BaseColor;
 		}
 
-		FLinearColor SpecularColor = Material->SpecularColor;
-		if (ColorEditLinear("Specular Color", &SpecularColor.R, ImGuiColorEditFlags_NoAlpha))
-		{
-			Material = GetEditableDecalMaterial(Decal);
-			Material->SpecularColor = SpecularColor;
-		}
-
-		// 기존 메시 머티리얼과 동일한 반사 지수 편집
-		float Shininess = Material->Shininess;
-		if (ImGui::DragFloat("Shininess", &Shininess, 1.0f, 1.0f, 1024.0f))
-		{
-			Material = GetEditableDecalMaterial(Decal);
-			Material->Shininess = Shininess;
-		}
+		//FLinearColor SpecularColor = Material->SpecularColor;
+		//if (ColorEditLinear("Specular Color", &SpecularColor.R, ImGuiColorEditFlags_NoAlpha))
+		//{
+		//	Material = GetEditableDecalMaterial(Decal);
+		//	Material->SpecularColor = SpecularColor;
+		//}
+		//
+		//// 기존 메시 머티리얼과 동일한 반사 지수 편집
+		//float Shininess = Material->Shininess;
+		//if (ImGui::DragFloat("Shininess", &Shininess, 1.0f, 1.0f, 1024.0f))
+		//{
+		//	Material = GetEditableDecalMaterial(Decal);
+		//	Material->Shininess = Shininess;
+		//}
 
 		// 기존 머티리얼 속성을 이용한 노멀맵 방향 설정
 		bool bFlipNormalGreen = Material->bFlipNormalGreen;

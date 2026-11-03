@@ -65,6 +65,10 @@ public:
 	// OpenGL(Y+) 규칙으로 만든 노멀맵을 DirectX(Y-) 규칙으로 읽도록 G를 뒤집는다 (언리얼 Flip Green Channel)
 	bool bFlipNormalGreen = false;
 
+	// 데칼 색상 및 노멀의 독립 적용 설정
+	bool bAffectBaseColor = true;
+	bool bAffectNormal = true;
+
 	bool bIsInstance = false;
 
 	// 인스턴스가 복제된 원본. 인스턴스는 경로가 없어서, 저장할 때 원본을 따라가 기준 에셋을 찾는다

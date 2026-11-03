@@ -122,6 +122,7 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 		);
 	}
 
+
 	FStatOverlay::SetShadowStats(ShadowStats);
 
 	Renderer->RenderQueueSorting(RenderQueue, SceneView.ViewProjection, SceneView.Location);
@@ -132,6 +133,7 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 
 	// 1. 불투명·반투명 Pass (Linear 씬 컬러)
 	RenderOpaquePass(SceneView, Settings, World, Targets, RenderQueue, Lighting.Directional);
+	RenderTranslucentPass(SceneView, Settings, World, Targets);
 
 	if (Settings.bDepthView)
 	{
@@ -218,18 +220,6 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 
 	PassInfo.ColorRenderTargets.Add(SceneColorDesc);
 
-	FRenderingDesc NormalDesc;
-	NormalDesc.Texture = Targets.Normal.get();
-	NormalDesc.LoadOp = ERenderTargetLoadOp::Clear;
-	NormalDesc.ClearValue.ColorClearValue = FVector4(0.f);
-	PassInfo.ColorRenderTargets.Add(NormalDesc);
-
-	FRenderingDesc ObjectMaskDesc;
-	ObjectMaskDesc.Texture = Targets.ObjectMask.get();
-	ObjectMaskDesc.LoadOp = ERenderTargetLoadOp::Clear;
-	ObjectMaskDesc.ClearValue.ColorClearValue = FVector4(0.f);
-	PassInfo.ColorRenderTargets.Add(ObjectMaskDesc);
-
 	PassInfo.DepthStencil.Texture = Targets.Depth.get();
 	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Clear;
 	PassInfo.DepthStencil.ClearValue.DepthClearValue = 1.0f;
@@ -249,6 +239,23 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 		SkyboxRenderer->OnRender(SceneView.ViewProjection, SceneView.Location, DirectionalLight);
 	}
 
+	RenderCommand::EndRenderPass();
+
+	// 배경 출력 이후의 불투명 표면 데이터 타깃 연결
+	PassInfo.ColorRenderTargets[0].LoadOp = ERenderTargetLoadOp::Load;
+	FRenderingDesc NormalDesc;
+	NormalDesc.Texture = Targets.Normal.get();
+	NormalDesc.LoadOp = ERenderTargetLoadOp::Clear;
+	NormalDesc.ClearValue.ColorClearValue = FVector4(0.f);
+	PassInfo.ColorRenderTargets.Add(NormalDesc);
+	FRenderingDesc ObjectMaskDesc;
+	ObjectMaskDesc.Texture = Targets.ObjectMask.get();
+	ObjectMaskDesc.LoadOp = ERenderTargetLoadOp::Clear;
+	ObjectMaskDesc.ClearValue.ColorClearValue = FVector4(0.f);
+	PassInfo.ColorRenderTargets.Add(ObjectMaskDesc);
+	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
+	RenderCommand::BeginRenderPass(PassInfo);
+
 	if (bDrawPrimitives)
 	{
 		RenderCommand::SetRasterizerState(SceneRasterizerState);
@@ -261,15 +268,11 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 		// 불투명을 먼저 그리고 반투명을 먼 것부터 그린다.
 		// Grid는 깊이를 쓰지 않는 반투명 위에도 겹칠 수 있지만, 언리얼의 에디터 프리미티브처럼 Overlay Pass에서 마지막에 합성한다.
 		RenderCommand::BindShaderResource(4, Targets.DecalTexture.get(), EShaderBindFlagBits::Pixel);
+		RenderCommand::BindShaderResource(5, Targets.DecalNormal.get(), EShaderBindFlagBits::Pixel);
 		Renderer->BindShadowForShading();
 		Renderer->RenderOpaque();
 		RenderCommand::UnbindShaderResource(4, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
-
-		DrawWorldText(SceneView, ViewWorld);
-		RenderCommand::SetRasterizerState(SceneRasterizerState); // TextRenderer가 상태를 바꾸므로 되돌림
-
-		Renderer->RenderTranslucent();
-
+		RenderCommand::UnbindShaderResource(5, EShaderBindFlagBits::Pixel);
 		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
 		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 	}
@@ -290,6 +293,12 @@ void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRe
 	RenderTarget.LoadOp = ERenderTargetLoadOp::Clear;
 	RenderTarget.ClearValue.ColorClearValue = FVector4(0.f);
 
+	// 독립적인 노멀 적용 비중을 가진 두 번째 DBuffer
+	FRenderingDesc& NormalDesc = PassInfo.ColorRenderTargets.AddDefaulted_GetRef();
+	NormalDesc.Texture = Targets.DecalNormal.get();
+	NormalDesc.LoadOp = ERenderTargetLoadOp::Clear;
+	NormalDesc.ClearValue.ColorClearValue = FVector4(0.0f);
+
 	PassInfo.DepthStencil.Texture = nullptr;
 	PassInfo.ViewportSetting.Width = Targets.Width;
 	PassInfo.ViewportSetting.Height = Targets.Height;
@@ -300,14 +309,15 @@ void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRe
 	FDecalStats DecalStats = FStatOverlay::GetDecalStats();
 	const EViewMode ViewMode = SceneView.RenderMode.ViewMode;
 	if (Settings.bDrawDecals && Settings.bDrawPrimitives && !Settings.bDepthView && !Settings.bVisualizeCascades
-		&& !Settings.bVisualizeTileLightCount && (ViewMode == EViewMode::Lit || ViewMode == EViewMode::Unlit))
+		&& !Settings.bVisualizeTileLightCount && (ViewMode == EViewMode::Lit || ViewMode == EViewMode::Unlit
+		|| ViewMode == EViewMode::WorldNormal))
 	{
 		uint32 DrawCount = 0;
 
 		// 현재 뷰의 CPU 제출 시간 측정
 		FScopeCycleCounter DecalTimer(STAT_DecalDrawTime, true);
 		DecalRenderer->Render(ViewWorld.GetScene().Decals, SceneView.ViewProjection, DepthTexture, ObjectMaskTexture,
-			DrawCount, ViewWorld.GetWorldType() != EWorldType::Editor);
+			Targets.Normal.get(), DrawCount, ViewWorld.GetWorldType() != EWorldType::Editor);
 		const uint64 DrawCycles = DecalTimer.Finish();
 
 		// 동일 프레임의 뷰별 제출 수와 CPU 처리 시간 합산
@@ -319,6 +329,34 @@ void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const FSceneRe
 	RenderCommand::EndRenderPass();
 
 	FStatOverlay::SetDecalStats(DecalStats);
+}
+
+void FSceneRenderer::RenderTranslucentPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets)
+{
+	if (!Settings.bDrawPrimitives)
+	{
+		return;
+	}
+
+	// 표면 데이터 타깃을 제외한 기존 텍스트·반투명 출력
+	FRenderingInfo PassInfo;
+	PassInfo.ViewportSetting.Width = Targets.Width;
+	PassInfo.ViewportSetting.Height = Targets.Height;
+	FRenderingDesc& SceneColorDesc = PassInfo.ColorRenderTargets.AddDefaulted_GetRef();
+	SceneColorDesc.Texture = Targets.SceneColor.get();
+	SceneColorDesc.LoadOp = ERenderTargetLoadOp::Load;
+	PassInfo.DepthStencil.Texture = Targets.Depth.get();
+	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
+	RenderCommand::BeginRenderPass(PassInfo);
+
+	const ERasterizerState SceneRasterizerState = SceneView.RenderMode.ViewMode == EViewMode::Wireframe
+		? ERasterizerState::Wireframe : ERasterizerState::SolidBack;
+	DrawWorldText(SceneView, ViewWorld);
+	RenderCommand::SetRasterizerState(SceneRasterizerState); // TextRenderer가 상태를 바꾸므로 되돌림
+	Renderer->RenderTranslucent();
+	// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
+	RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
+	RenderCommand::EndRenderPass();
 }
 
 void FSceneRenderer::DrawWorldText(const FSceneView& SceneView, const UWorld& ViewWorld)

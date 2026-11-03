@@ -43,6 +43,8 @@ UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
 	Instance->Shininess = Source->Shininess;
 	Instance->SpecularColor = Source->SpecularColor;
 	Instance->bFlipNormalGreen = Source->bFlipNormalGreen;
+	Instance->bAffectBaseColor = Source->bAffectBaseColor;
+	Instance->bAffectNormal = Source->bAffectNormal;
 
 	// ParamBuffer는 TUniquePtr라 복사할 수 없다.
 	// 원본이 갖고 있으면 같은 크기로 새로 만들어 준다. 내용은 매 프레임 갱신되므로 옮기지 않는다.
@@ -94,6 +96,8 @@ json UMaterial::SaveMaterial(const UMaterial* Material)
 	Out["Shininess"] = Material->Shininess;
 	Out["SpecularColor"] = Material->SpecularColor;
 	Out["bFlipNormalGreen"] = Material->bFlipNormalGreen;
+	Out["bAffectBaseColor"] = Material->bAffectBaseColor;
+	Out["bAffectNormal"] = Material->bAffectNormal;
 	Out["SamplerState"] = Material->SamplerState == ESamplerState::LinearWrap ? "LinearWrap" : "LinearClamp";
 	Out["BlendState"] = Material->BlendState == EBlendState::AlphaBlend ? "AlphaBlend" : "Opaque";
 
@@ -180,7 +184,14 @@ UMaterial* UMaterial::LoadMaterial(const json& In)
 		const FString State = In["BlendState"].get<FString>();
 		Instance->BlendState = State == "AlphaBlend" ? EBlendState::AlphaBlend : EBlendState::Opaque;
 	}
-
+	if (In.contains("bAffectBaseColor"))
+	{
+		Instance->bAffectBaseColor = In["bAffectBaseColor"].get<bool>();
+	}
+	if (In.contains("bAffectNormal"))
+	{
+		Instance->bAffectNormal = In["bAffectNormal"].get<bool>();
+	}
 	return Instance;
 }
 
@@ -253,7 +264,14 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 		<< SA_VALUE("Shininess", Shininess)
 		<< SA_VALUE("SpecularColor", SpecularColor)
 		<< SA_VALUE("bFlipNormalGreen", bFlipNormalGreen);
-
+	if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("bAffectBaseColor", true))
+	{
+		Slot.GetValue() << bAffectBaseColor;
+	}
+	if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("bAffectNormal", true))
+	{
+		Slot.GetValue() << bAffectNormal;
+	}
 	// enum은 이름 문자열로 (UE 텍스트 포맷도 enum을 이름으로 쓴다)
 	FString Sampler = SamplerState == ESamplerState::LinearWrap ? "LinearWrap" : "LinearClamp";
 	Record << SA_VALUE("SamplerState", Sampler);

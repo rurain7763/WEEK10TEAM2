@@ -69,6 +69,8 @@ private:
 	// 불투명 물체에 대한 Pass
 	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
 	void RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets);
+	// 반투명 물체에 대한 Pass
+	void RenderTranslucentPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets);
 	// 월드에 배치된 텍스트 그리기
 	void DrawWorldText(const FSceneView& SceneView, const UWorld& ViewWorld);
 	// 안개에 대한 Pass

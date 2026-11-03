@@ -2,15 +2,16 @@
 #include "Scene.h"
 #include "LightSceneProxy.h"
 #include "Render/ColorWorkflow.h"
+#include <Core/StatOverlay.h>
 #include "Component/DecalComponent.h"
 #include "Engine/DecalSceneProxy.h"
-#include <Core/StatOverlay.h>
-
-
 
 void FScene::AddPrimitive(UPrimitiveComponent* Component)
 {
-	if (!Component || Component->SceneProxy) return;
+	if (!Component || Component->SceneProxy)
+	{
+		return;
+	}
 
 	FPrimitiveSceneProxy* Proxy = Component->CreateSceneProxy();
 	if (!Proxy)
@@ -37,7 +38,10 @@ void FScene::RemovePrimitive(UPrimitiveComponent* Component)
 {
 	MarkShadowDirty();
 
-	if (!Component || !Component->SceneProxy) return;
+	if (!Component || !Component->SceneProxy)
+	{
+		return;
+	}
 
 	FPrimitiveSceneProxy* Proxy = Component->SceneProxy;
 	if (!Proxy) return;
@@ -236,10 +240,16 @@ void FScene::RemoveDecal(UDecalComponent* Component)
 	if (!Component || !Component->SceneProxy) return;
 
 	FDecalSceneProxy* Proxy = Component->SceneProxy;
-	if (Proxy->GetScene() != this) return;
+	if (Proxy->GetScene() != this)
+	{
+		return;
+	}
 
 	const int32 Index = Decals.Find(Proxy);
-	if (Index != INDEX_NONE) Decals.RemoveAt(Index);
+	if (Index != INDEX_NONE)
+	{
+		Decals.RemoveAt(Index);
+	}
 	Component->SceneProxy = nullptr;
 	delete Proxy;
 }
@@ -250,7 +260,9 @@ void FScene::RemoveAllDecals()
 	{
 		UDecalComponent* Component = Proxy->GetComponent();
 		if (Component->SceneProxy == Proxy)
+		{
 			Component->SceneProxy = nullptr;
+		}
 		delete Proxy;
 	}
 	Decals.Reset();
@@ -259,7 +271,9 @@ void FScene::RemoveAllDecals()
 void FScene::MarkDecalDirty(FDecalSceneProxy* Proxy)
 {
 	if (Proxy && Proxy->GetScene() == this)
+	{
 		Proxy->bDirty = true;
+	}
 }
 
 void FScene::UpdateAllTransforms()
