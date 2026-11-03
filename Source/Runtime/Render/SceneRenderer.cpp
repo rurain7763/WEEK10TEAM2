@@ -170,6 +170,11 @@ void FSceneRenderer::RenderSurfacePrepass(const FSceneView& SceneView, const FSc
 	ObjectMaskDesc.Texture = Targets.ObjectMask.get();
 	ObjectMaskDesc.LoadOp = ERenderTargetLoadOp::Clear;
 
+	FRenderingDesc& NormalDesc = PassInfo.ColorRenderTargets.AddDefaulted_GetRef();
+	NormalDesc.Texture = Targets.Normal.get();
+	NormalDesc.LoadOp = ERenderTargetLoadOp::Clear;
+	NormalDesc.ClearValue.ColorClearValue = FVector4(0.0f);
+
 	PassInfo.DepthStencil.Texture = Targets.Depth.get();
 	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Clear;
 	PassInfo.DepthStencil.ClearValue.DepthClearValue = 1.0f;

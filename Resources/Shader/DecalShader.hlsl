@@ -47,7 +47,7 @@ float4 mainPS(PS_INPUT Input) : SV_TARGET
     {
         discard;
     }
-    
+  
     if (Depth >= 1.0f)
     {
         discard;
