@@ -119,6 +119,12 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 
 	FStatOverlay::SetShadowStats(ShadowStats);
 
+	Renderer->RenderQueueSorting(RenderQueue, SceneView.ViewProjection, SceneView.Location);
+
+	RenderSurfacePrepass(SceneView, Settings, Targets);
+
+	RenderDecalPass(SceneView, World, Targets);
+
 	// 1. 불투명·반투명 Pass (Linear 씬 컬러)
 	RenderOpaquePass(SceneView, Settings, World, Targets, RenderQueue, Lighting.Directional);
 
@@ -149,6 +155,31 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 	}
 }
 
+void FSceneRenderer::RenderSurfacePrepass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FSceneRenderTargets& Targets)
+{
+	FRenderingInfo PassInfo;
+	PassInfo.ViewportSetting.Width = Targets.Width;
+	PassInfo.ViewportSetting.Height = Targets.Height;
+
+	FRenderingDesc& ObjectMaskDesc = PassInfo.ColorRenderTargets.AddDefaulted_GetRef();
+	ObjectMaskDesc.Texture = Targets.ObjectMask.get();
+	ObjectMaskDesc.LoadOp = ERenderTargetLoadOp::Clear;
+
+	PassInfo.DepthStencil.Texture = Targets.Depth.get();
+	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Clear;
+	PassInfo.DepthStencil.ClearValue.DepthClearValue = 1.0f;
+	PassInfo.DepthStencil.ClearValue.StencilClearValue = 0;
+
+	RenderCommand::BeginRenderPass(PassInfo);
+
+	if (Settings.bDrawPrimitives)
+	{
+		Renderer->RenderSurface();
+	}
+
+	RenderCommand::EndRenderPass();
+}
+
 void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld,  const FSceneRenderTargets& Targets, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight)
 {
 	// 뷰 모드가 셰이더 permutation을, Wireframe 여부가 Fill Mode를 정한다. 삼각형 연결은 그대로다.
@@ -166,13 +197,15 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 	FRenderingInfo PassInfo;
 	PassInfo.ViewportSetting.Width = Targets.Width;
 	PassInfo.ViewportSetting.Height = Targets.Height;
-	const float ClearValue = ColorWorkflow::bLinear ? FLinearColor::SRGBToLinear(0.3f) : 0.3f;
 
 	// 출력 순서는 UberLit의 SV_Target0/1/2에 대응한다.
 	FRenderingDesc SceneColorDesc;
 	SceneColorDesc.Texture = Targets.SceneColor.get();
 	SceneColorDesc.LoadOp = ERenderTargetLoadOp::Clear;
+
+	const float ClearValue = ColorWorkflow::bLinear ? FLinearColor::SRGBToLinear(0.3f) : 0.3f;
 	SceneColorDesc.ClearValue.ColorClearValue = FVector4(ClearValue, ClearValue, ClearValue, 1.0f);
+
 	PassInfo.ColorRenderTargets.Add(SceneColorDesc);
 
 	FRenderingDesc NormalDesc;
@@ -211,17 +244,21 @@ void FSceneRenderer::RenderOpaquePass(const FSceneView& SceneView, const FSceneR
 		RenderCommand::SetRasterizerState(SceneRasterizerState);
 		RenderCommand::SetBlendState(EBlendState::Opaque);
 		RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
-
 		RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
 		Renderer->SetViewMode(ViewRenderMode);
+		
 		// 불투명을 먼저 그리고 반투명을 먼 것부터 그린다.
 		// Grid는 깊이를 쓰지 않는 반투명 위에도 겹칠 수 있지만, 언리얼의 에디터 프리미티브처럼 Overlay Pass에서 마지막에 합성한다.
-		Renderer->RenderQueueSorting(RenderQueue, SceneView.ViewProjection, SceneView.Location);
-		Renderer->RenderOpaque(SceneView.ViewProjection);
-		RenderDecalPass(SceneView, ViewWorld, Targets);
+		RenderCommand::BindShaderResource(4, Targets.DecalTexture.get(), EShaderBindFlagBits::Pixel);
+		Renderer->RenderOpaque();
+		RenderCommand::UnbindShaderResource(4, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+
 		DrawWorldText(SceneView, ViewWorld);
 		RenderCommand::SetRasterizerState(SceneRasterizerState); // TextRenderer가 상태를 바꾸므로 되돌림
-		Renderer->RenderTranslucent(SceneView.ViewProjection);
+
+		Renderer->RenderTranslucent();
+
 		// 장면 Wireframe이 Grid·Gizmo·UI로 전파되지 않도록 복원한다.
 		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 	}
@@ -237,8 +274,9 @@ void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const UWorld& 
 	FRenderingInfo PassInfo;
 
 	FRenderingDesc& RenderTarget = PassInfo.ColorRenderTargets.AddDefaulted_GetRef();
-	RenderTarget.Texture = Targets.SceneColor.get();
-	RenderTarget.LoadOp = ERenderTargetLoadOp::Load;
+	RenderTarget.Texture = Targets.DecalTexture.get();
+	RenderTarget.LoadOp = ERenderTargetLoadOp::Clear;
+	RenderTarget.ClearValue.ColorClearValue = FVector4(0.f);
 
 	PassInfo.DepthStencil.Texture = nullptr;
 	PassInfo.ViewportSetting.Width = Targets.Width;
@@ -250,12 +288,6 @@ void FSceneRenderer::RenderDecalPass(const FSceneView& SceneView, const UWorld& 
 	RenderCommand::UnbindShaderResource(0, EShaderBindFlagBits::Pixel);
 
 	RenderCommand::EndRenderPass();
-
-	// 뒤따르는 텍스트·반투명은 씬 색상과 불투명 단계의 깊이만 이어서 사용한다.
-	FRenderingInfo BackupPassInfo = PassInfo;
-	BackupPassInfo.DepthStencil.Texture = Targets.Depth.get();
-	BackupPassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
-	RenderCommand::BeginRenderPass(BackupPassInfo);
 }
 
 void FSceneRenderer::DrawWorldText(const FSceneView& SceneView, const UWorld& ViewWorld)

@@ -374,14 +374,14 @@ void UBenchmarkEngine::Tick(float DeltaTime)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_RenderOpaqueTotal);
 		Renderer->RenderQueueSorting(RenderQueue, ViewProjection, PlayerView.Location);
-		Renderer->RenderOpaque(ViewProjection);
+		Renderer->RenderOpaque();
 	}
 
 	// Grid가 깊이를 쓰기 전, 불투명만 그려진 깊이 버퍼로 측정한다.
 	if (bMeasureOcclusionRequested)
 	{
 		bMeasureOcclusionRequested = false;
-		LastOcclusionMeasure = Renderer->MeasureOpaqueOcclusion(ViewProjection);
+		LastOcclusionMeasure = Renderer->MeasureOpaqueOcclusion();
 	}
 
 	GridRenderer->OnRenderBatchGrid(
@@ -397,7 +397,7 @@ void UBenchmarkEngine::Tick(float DeltaTime)
 		// Grid 파이프라인이 바꾼 상태를 장면 기준으로 되돌린다.
 		RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 		RenderCommand::SetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		Renderer->RenderTranslucent(ViewProjection);
+		Renderer->RenderTranslucent();
 
 		DrawSelectionBounds(ViewProjection);
 

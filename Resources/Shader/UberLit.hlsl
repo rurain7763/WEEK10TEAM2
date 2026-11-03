@@ -224,6 +224,7 @@ Texture2D NormalTexture : register(t1);
 
 Texture2DArray<float> ShadowTextureArray : register(t2);
 Texture2D<float> DirectionalLightShadowmapAtlas : register(t3);
+Texture2D DecalTexture : register(t4);
 
 SamplerState AlbedoSampler : register(s0);
 SamplerState ShadowPointSampler : register(s1);
@@ -940,7 +941,9 @@ FPSOutput mainPS(FPSInput Input)
     float4 FinalColor = float4(0.0f, 0.0f, 0.0f, 1.0f);
 
     float4 TextureColor = AlbedoTexture.Sample(AlbedoSampler, Input.UV + UVScrollOffset);
+    float4 DecalColor = DecalTexture.Load(int3(Input.Position.xy, 0));
     float4 SurfaceColor = TextureColor * BaseColor;
+    SurfaceColor.rgb = SurfaceColor.rgb * (1.f - DecalColor.a) + DecalColor.rgb;
 
     float3 Albedo = SurfaceColor.rgb;
     float Alpha = bOpaque ? 1.0f : SurfaceColor.a;

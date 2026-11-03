@@ -180,12 +180,6 @@ FSkeletalMeshSceneProxy::~FSkeletalMeshSceneProxy()
 {
 }
 
-void FSkeletalMeshSceneProxy::BindSRVs() const
-{
-    ID3D11ShaderResourceView* SRV = BoneMatrixSRV.Get();
-    RenderCommand::GetContext()->VSSetShaderResources(13, 1, &SRV);
-}
-
 bool FSkeletalMeshSceneProxy::UpdateBoneMatrixBuffer()
 {
     const auto* ActualComponent = Cast<USkeletalMeshComponent>(GetComponent());

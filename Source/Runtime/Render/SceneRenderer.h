@@ -63,6 +63,8 @@ public:
 		const FSceneRenderTargets& Targets, FRenderQueue& RenderQueue);
 
 private:
+	void RenderSurfacePrepass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FSceneRenderTargets& Targets);
+
 	// 불투명 물체에 대한 Pass
 	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
 	void RenderDecalPass(const FSceneView& SceneView, const UWorld& ViewWorld, const FSceneRenderTargets& Targets);

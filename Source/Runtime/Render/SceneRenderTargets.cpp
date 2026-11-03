@@ -29,6 +29,7 @@ void FSceneRenderTargets::Resize(uint32 InWidth, uint32 InHeight)
 
 	Desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
 	SceneColor = RenderCommand::CreateTexture2D(Desc);
+	DecalTexture = RenderCommand::CreateTexture2D(Desc);
 	Normal = RenderCommand::CreateTexture2D(Desc);
 
 	Desc.Format = DXGI_FORMAT_R8_UINT;
@@ -45,6 +46,7 @@ void FSceneRenderTargets::Resize(uint32 InWidth, uint32 InHeight)
 void FSceneRenderTargets::Release()
 {
 	SceneColor.reset();
+	DecalTexture.reset();
 	Normal.reset();
 	ObjectMask.reset();
 	ViewColor.reset();

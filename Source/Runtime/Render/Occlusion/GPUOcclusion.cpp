@@ -1,4 +1,4 @@
-#include "EnginePCH.h"
+﻿#include "EnginePCH.h"
 #include "GPUOcclusion.h"
 
 #include "Render/Renderer.h"
@@ -571,7 +571,9 @@ void FGPUOcclusion::DrawOccluders(const FPrimitiveSceneProxy* const* Proxies, co
 		for (const FOccluderDraw& Draw : Bucket.Draws)
 		{
 			RenderCommand::BindConstantBufferRange(2, OccluderCB.get(), Draw.Slot * SlotConstants, SlotConstants, EShaderBindFlagBits::Vertex);
-			Draw.Proxy->BindSRVs();
+			ID3D11ShaderResourceView* BoneMatricesSRV = Draw.Proxy->IsUsingSkinning()
+				? Draw.Proxy->GetBoneMatricesSRV() : nullptr;
+			Context->VSSetShaderResources(13, 1, &BoneMatricesSRV);
 			RenderCommand::DrawIndexed(Draw.IndexCount, Draw.StartIndex);
 		}
 	}
