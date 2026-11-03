@@ -616,14 +616,15 @@ void UEditorEngine::EndFrame()
 
 void UEditorEngine::UpdateEditorTabs()
 {
-	//const TArray<TUniquePtr<FEditorTab>>& Tabs = EditorUI->GetTabs();
-	//for (int32 Index = Tabs.Num() - 1; Index > 0; --Index)
-	//{
-	//	if (Tabs[Index]->IsOpen())
-	//		continue;
-	//	ReleaseWorldShadowResources(Tabs[Index]->GetWorld());
-	//	EditorUI->RemoveTab(Index);
-	//}
+	const TArray<TUniquePtr<FEditorTab>>& Tabs = EditorUI->GetTabs();
+	for (int32 Index = Tabs.Num() - 1; Index > 0; --Index)
+	{
+		if (Tabs[Index]->IsOpen())
+		{
+			continue;
+		}
+		EditorUI->RemoveTab(Index);
+	}
 
 	if (PendingPreviewMesh)
 	{
