@@ -128,6 +128,13 @@ struct FPSInput
 #endif
 };
 
+struct FPSOutput
+{
+    float4 Color : SV_Target0;
+    float4 Normal : SV_Target1;
+    uint ObjectMask : SV_Target2;
+};
+
 cbuffer ViewConstants : register(b0)
 {
     matrix ViewProjection;
@@ -149,6 +156,8 @@ cbuffer PerObjectConstants : register(b2)
 {
     matrix World;
     matrix NormalMatrix; // World의 역전치
+    uint ObjectMask;
+    uint3 PerObjectConstantsPadding;
 };
 
 cbuffer LightingConstants : register(b3)
@@ -924,8 +933,10 @@ FPSInput mainVS(FVSInput Input)
     return Output;
 }
 
-float4 mainPS(FPSInput Input) : SV_TARGET
+FPSOutput mainPS(FPSInput Input)
 {
+    FPSOutput Output;
+    
     float4 FinalColor = float4(0.0f, 0.0f, 0.0f, 1.0f);
 
     float4 TextureColor = AlbedoTexture.Sample(AlbedoSampler, Input.UV + UVScrollOffset);
@@ -981,8 +992,12 @@ float4 mainPS(FPSInput Input) : SV_TARGET
         {
             Color *= 0.2f;
         }
+        
+        Output.Color = float4(Color, 1.0f);
+        Output.Normal = float4(WorldNormal, 0.f);
+        Output.ObjectMask = ObjectMask;
 
-        return float4(Color, 1.0f);
+        return Output;
     }
     
     if (bVisualizeCascades != 0u)
@@ -1016,7 +1031,12 @@ float4 mainPS(FPSInput Input) : SV_TARGET
         }
 
         float3 Color = BaseColor * (0.35f + 0.65f * Shadow);
-        return float4(Color, 1.0f);
+        
+        Output.Color = float4(Color, 1.0f);
+        Output.Normal = float4(WorldNormal, 0.f);
+        Output.ObjectMask = ObjectMask;
+        
+        return Output;
     }
     
     float3 DiffuseLight;
@@ -1037,5 +1057,10 @@ float4 mainPS(FPSInput Input) : SV_TARGET
 #endif
     FinalColor = float4(Ka * AmbientLight.Color + Kd * DiffuseLight + Ks * SpecularLight, Alpha);
 #endif
-    return FinalColor;
+    
+    Output.Color = FinalColor;
+    Output.Normal = float4(N, 0.f);
+    Output.ObjectMask = ObjectMask;
+    
+    return Output;
 }

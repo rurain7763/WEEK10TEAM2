@@ -59,6 +59,22 @@ void FPrimitiveSceneProxy::UpdateRenderState()
     bCastShadow = Component->IsCastShadow();
     bReceiveShadow = Component->IsReceiveShadow();
     bHiddenInGame = Component->IsHiddenInGame();
+
+    ObjectMask = 0;
+    if (bCastShadow)
+    {
+        ObjectMask |= OM_CastShadow;
+    }
+
+    if (bReceiveShadow)
+    {
+        ObjectMask |= OM_ReceiveShadow;
+    }
+
+    if (Component->IsReceiveDecals())
+    {
+        ObjectMask |= OM_ReceiveDecals;
+    }
 }
 
 FStaticMeshSceneProxy::FStaticMeshSceneProxy(UStaticMeshComponent* InComponent)

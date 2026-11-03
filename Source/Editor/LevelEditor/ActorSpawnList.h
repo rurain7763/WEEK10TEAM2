@@ -14,6 +14,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/Actor/PlayerActor.h"
 #include "GameFramework/Actor/EnemyActor.h"
+#include "GameFramework/Actor/DecalActor.h"
 #include "Game/Coin.h"
 #include "Game/CoinLauncher.h"
 #include "Game/CoinRain.h"
@@ -48,5 +49,6 @@ inline constexpr FSpawnableActorType SpawnableActorTypes[] =
 	{ "Camera",               &ACameraActor::StaticClass },
 	{ "Pawn", 				  &APawn::StaticClass },
 	{ "DefaultPawn",          &ADefaultPawn::StaticClass },
-	{ "PlayerStart",          &APlayerStart::StaticClass }
+	{ "PlayerStart",          &APlayerStart::StaticClass },
+	{ "DecalActor",           &ADecalActor::StaticClass }		
 };

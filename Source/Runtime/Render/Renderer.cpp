@@ -25,7 +25,6 @@ DECLARE_CYCLE_STAT("Render Queue Sorting", STAT_RenderQueueSorting);
 DECLARE_CYCLE_STAT("Upload Per-Object CB", STAT_UploadPerObjectCB);
 DECLARE_CYCLE_STAT("Shadow Pass (Total)", STAT_Shadow);
 
-
 namespace
 {
 	// VSSetConstantBuffers1의 오프셋은 16개 상수(256바이트) 단위여야 하므로 오브젝트마다 256바이트 칸을 쓴다.
@@ -110,7 +109,8 @@ void FRenderer::UploadPerObjectConstants()
 	for (uint32 Index = 0; Index < Count; ++Index)
 	{
 		FRenderPacket& P = RenderPackets[Index];
-		WriteObjectSlot(Dest, Index, GetPacketWorld(P), GetPacketNormalMatrix(P));
+		const uint32 ObjectMask = P.Proxy ? P.Proxy->GetObjectMask() : 0u;
+		WriteObjectSlot(Dest, Index, GetPacketWorld(P), GetPacketNormalMatrix(P), ObjectMask);
 		P.Slot = Index;
 	}
 
@@ -184,12 +184,12 @@ void FRenderer::DrawStaticGroups()
 
 			if (bUsePerObjectSlots && Item.Slot != InvalidObjectSlot)
 			{
-				RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), Item.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex);
+				RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), Item.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 			}
 			else
 			{
-				RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
-				UpdatePerObjectConstants(Item.Proxy->GetLocalToWorld(), Item.Proxy->GetNormalMatrix());
+				RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+				UpdatePerObjectConstants(Item.Proxy->GetLocalToWorld(), Item.Proxy->GetNormalMatrix(), Item.Proxy->GetObjectMask());
 			}
 			if (Item.Proxy) Item.Proxy->BindSRVs();
 			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
@@ -330,11 +330,11 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 
 		if (bUsePerObjectSlots && RenderPacket.Slot != InvalidObjectSlot)
 		{
-			RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), RenderPacket.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex);
+			RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), RenderPacket.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 		}
 		else
 		{
-			RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
+			RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 			UpdatePerObjectConstants(RenderPacket, ViewProjection);
 		}
 
@@ -458,7 +458,7 @@ FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewPro
 		else
 		{
 			RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
-			UpdatePerObjectConstants(*Draw.World, MakeNormalMatrix(*Draw.World));   // 측정 전용 폴백이라 매번 계산한다
+			UpdatePerObjectConstants(*Draw.Packet, ViewProjection);   // 측정 전용 폴백이라 매번 계산한다
 		}
 
 		ID3D11Query* Query = OcclusionQueries[Index].Get();
@@ -649,18 +649,17 @@ void FRenderer::UpdateMaterialParams(const FRenderPacket& RenderPacket)
 // b0 MVP 채우고 꽂기
 void FRenderer::UpdatePerObjectConstants(const FRenderPacket& RenderPacket, const FMatrix& ViewProjection)
 {
-	// rp.Transform 과 Camera VP 행렬 곱
-	// 행렬곱의 결과 (MVP Matrix) Constant Buffer 업데이트 필요
-
-	UpdatePerObjectConstants(GetPacketWorld(RenderPacket), GetPacketNormalMatrix(RenderPacket));
+	// 빌보드·파티클처럼 Proxy 없이 제출된 패킷은 수신 플래그를 기록하지 않는다.
+	const uint32 ObjectMask = RenderPacket.Proxy ? RenderPacket.Proxy->GetObjectMask() : 0u;
+	UpdatePerObjectConstants(GetPacketWorld(RenderPacket), GetPacketNormalMatrix(RenderPacket), ObjectMask);
 }
 
-void FRenderer::UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix)
+void FRenderer::UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix, uint32 ObjectMask)
 {
 	FPerObjectConstants Constants;
-
 	Constants.World = World;
 	Constants.NormalMatrix = NormalMatrix;
+	Constants.ObjectMask = ObjectMask;
 
 	RenderCommand::UpdateBufferData(PerObjectCB.get(), &Constants);
 }
@@ -744,7 +743,7 @@ void FRenderer::RenderShadowPass(
 				continue;
 			}
 
-			UpdatePerObjectConstants(Proxy->GetLocalToWorld(), Proxy->GetNormalMatrix());
+			UpdatePerObjectConstants(Proxy->GetLocalToWorld(), Proxy->GetNormalMatrix(), Proxy->GetObjectMask());
 			RenderCommand::BindVertexBuffers(LOD.VertexBuffers, LOD.VertexBufferCount);
 			RenderCommand::BindIndexBuffer(LOD.IndexBuffer);
 

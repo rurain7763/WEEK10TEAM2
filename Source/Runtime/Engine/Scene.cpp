@@ -2,6 +2,8 @@
 #include "Scene.h"
 #include "LightSceneProxy.h"
 #include "Render/ColorWorkflow.h"
+#include "Component/DecalComponent.h"
+#include "Engine/DecalSceneProxy.h"
 #include <Core/StatOverlay.h>
 
 void FScene::AddPrimitive(UPrimitiveComponent* Component)
@@ -215,6 +217,49 @@ const FShadowInfo* FScene::GetDirectionalShadowInfo() const
 		}
 	}
 	return Result;
+}
+
+void FScene::AddDecal(UDecalComponent* Component)
+{
+	if (!Component)
+	{
+		return;
+	}
+
+	FDecalSceneProxy* Proxy = Component->CreateSceneProxy(this);
+	if (!Proxy)
+	{
+		return;
+	}
+
+	Decals.Add(Proxy);
+}
+
+void FScene::RemoveDecal(UDecalComponent* Component)
+{
+	FDecalSceneProxy* Proxy = Component->GetSceneProxy();
+	if (!Proxy)
+	{
+		return;
+	}
+
+	int32 Index = Decals.Find(Proxy);
+	if (Index != INDEX_NONE)
+	{
+		Decals.RemoveAtSwap(Index);
+	}
+}
+
+void FScene::RemoveAllDecals()
+{
+	for (FDecalSceneProxy* Proxy : Decals)
+	{
+		if (UDecalComponent* Component = Proxy->GetComponent())
+		{
+			Component->DestroySceneProxy();
+		}
+	}
+	Decals.Reset();
 }
 
 void FScene::UpdateAllTransforms()

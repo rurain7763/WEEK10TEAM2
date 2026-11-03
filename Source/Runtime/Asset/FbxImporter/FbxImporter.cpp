@@ -97,23 +97,10 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 	fbxsdk::FbxAxisSystem EngineImportAxis(UpVector, FrontVector, CoordSystem);
 	fbxsdk::FbxAxisSystem SourceAxis = GlobalSettings.GetAxisSystem();
 
-	fbxsdk::FbxAMatrix AxisConversionMatrix;
 	if (SourceAxis != EngineImportAxis)
 	{
 		fbxsdk::FbxRootNodeUtility::RemoveAllFbxRoots(Scene);
 		EngineImportAxis.ConvertScene(Scene);
-
-		FbxAMatrix SourceMatrix;
-		SourceAxis.GetMatrix(SourceMatrix);
-
-		FbxAMatrix EngineMatrix;
-		EngineImportAxis.GetMatrix(EngineMatrix);
-
-		AxisConversionMatrix = SourceMatrix.Inverse() * EngineMatrix;
-	}
-	else
-	{
-		EngineImportAxis.GetMatrix(AxisConversionMatrix);
 	}
 
 	// 파싱
@@ -127,14 +114,10 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 		ProcessMeshNode(FbxPath, NodeToIndexMap, NodeIndexToBoneIndexMap, OutModelData.Bones, MeshNode, OutModelData.MeshData, OutModelData.VertexInfluencesList, OutModelData.Meshs);
 	}
 
-	if (OutModelData.Bones.Num())
+	OutModelData.IsSkeletal = OutModelData.Bones.Num();
+	if (!OutModelData.IsSkeletal)
 	{
-		OutModelData.IsSkeletal = true;
-	}
-	else
-	{
-		OutModelData.IsSkeletal = false;
-
+		// 스켈레탈이 아니면 GlobalTransform을 계산해서 Vertex를 변환해 버린다.
 		TArray<FMatrix> GlobalTransforms;
 		GlobalTransforms.SetNum(OutModelData.Nodes.Num());
 		for (int32 i = 0; i < OutModelData.Nodes.Num(); i++)
@@ -185,6 +168,150 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 	MG->Destroy();
 
 	return true;
+}
+
+void FFbxImporter::BuildNodeHierarchy(int32 ParentNodeIndex, fbxsdk::FbxNode* Current, TMap<uint64, int32>& NodeToIndexMap, TMap<int32, int32>& NodeIndexToBoneIndexMap, TArray<FModelNode>& OutNodes, TArray<FModelBone>& OutBones, TArray<FMeshNode>& OutMeshNodes)
+{
+	if (!Current)
+	{
+		return;
+	}
+
+	int32 NodeIndex = OutNodes.Num();
+
+	NodeToIndexMap[Current->GetUniqueID()] = NodeIndex;
+
+	FModelNode& ModelNode = OutNodes.AddDefaulted_GetRef();
+	ModelNode.Name = Current->GetName();
+	ModelNode.ParentNodeIndex = ParentNodeIndex;
+
+	fbxsdk::FbxAMatrix& LocalTransform = Current->EvaluateLocalTransform();
+	ModelNode.LocalTransform = ConvertMatrix(LocalTransform);
+
+	if (Current->GetMesh())
+	{
+		FMeshNode& MeshNode = OutMeshNodes.AddDefaulted_GetRef();
+		MeshNode.FbxNode = Current;
+		MeshNode.NodeIndex = NodeIndex;
+	}
+
+	if (Current->GetSkeleton())
+	{
+		FModelBone& ModelBone = OutBones.AddDefaulted_GetRef();
+		ModelBone.NodeIndex = NodeIndex;
+
+		int32 CurrentParentNodeIndex = ParentNodeIndex;
+		while (CurrentParentNodeIndex != -1 && !NodeIndexToBoneIndexMap.Contains(CurrentParentNodeIndex))
+		{
+			CurrentParentNodeIndex = OutNodes[CurrentParentNodeIndex].ParentNodeIndex;
+		}
+
+		ModelBone.ParentBoneIndex = -1;
+		if (NodeIndexToBoneIndexMap.Contains(CurrentParentNodeIndex))
+		{
+			ModelBone.ParentBoneIndex = NodeIndexToBoneIndexMap[CurrentParentNodeIndex];
+		}
+
+		NodeIndexToBoneIndexMap[NodeIndex] = OutBones.Num() - 1;
+	}
+
+	for (int32 i = 0; i < Current->GetChildCount(); i++)
+	{
+		BuildNodeHierarchy(NodeIndex, Current->GetChild(i), NodeToIndexMap, NodeIndexToBoneIndexMap, OutNodes, OutBones, OutMeshNodes);
+	}
+}
+
+void FFbxImporter::ProcessMeshNode(const std::filesystem::path& FbxPath, const TMap<uint64, int32>& NodeToIndexMap, const TMap<int32, int32>& NodeIndexToBoneIndexMap, TArray<FModelBone>& Bones, const FMeshNode& MeshNode, FModelMeshData& OutModelMeshData, TArray<FModelVertexInfluences>& OutVertexInfluencesList, TArray<FModelMesh>& OutMeshs)
+{
+	bool IsSkeletal = Bones.Num();
+
+	fbxsdk::FbxMesh* Mesh = MeshNode.FbxNode->GetMesh();
+
+	TArray<FVertexPNCT> Vertices;
+	TArray<int32> VertexToControlPoint;
+	TArray<FMeshMaterialSlot> Materials;
+	TArray<FTriangleFace> Faces;
+	ParseMesh(FbxPath, Mesh, Vertices, VertexToControlPoint, Materials, Faces);
+
+	std::sort(Faces.begin(), Faces.end(), [](const FTriangleFace& A, const FTriangleFace& B) { return A.MaterialSlotIndex < B.MaterialSlotIndex; });
+
+	uint32 VertexOffset = OutModelMeshData.Vertices.Num();
+	uint32 IndexOffset = OutModelMeshData.Indices.Num();
+	uint32 MaterialOffset = OutModelMeshData.MaterialSlots.Num();
+
+	FModelMesh& ModelMesh = OutMeshs.AddDefaulted_GetRef();
+	ModelMesh.NodeIndex = MeshNode.NodeIndex;
+	;		ModelMesh.FirstSection = OutModelMeshData.Sections.Num();
+	ModelMesh.SectionCount = 0;
+
+	FMatrix BindGlobalTransform;
+	ParseSkin(VertexToControlPoint, NodeToIndexMap, NodeIndexToBoneIndexMap, MeshNode, Bones, OutVertexInfluencesList, BindGlobalTransform);
+
+	FMatrix BindGlobalTransformForNormal = BindGlobalTransform.Inverse().GetTransposed();
+
+	TArray<uint32> Indices;
+	FMeshSection* CurrentSection = nullptr;
+	for (int32 i = 0; i < Faces.Num(); i++)
+	{
+		const FTriangleFace& Face = Faces[i];
+		if (CurrentSection == nullptr || CurrentSection->MaterialSlotIndex != MaterialOffset + Face.MaterialSlotIndex)
+		{
+			CurrentSection = &OutModelMeshData.Sections.AddDefaulted_GetRef();
+			CurrentSection->StartIndex = IndexOffset + (i * 3);
+			CurrentSection->IndexCount = 0;
+			CurrentSection->MaterialSlotIndex = MaterialOffset + Face.MaterialSlotIndex;
+
+			ModelMesh.SectionCount++;
+		}
+
+		CurrentSection->IndexCount += 3;
+
+		Indices.Add(Face.VertexIndices[0]);
+		Indices.Add(Face.VertexIndices[1]);
+		Indices.Add(Face.VertexIndices[2]);
+	}
+
+	const bool bNeedsNormals = Mesh->GetElementNormalCount() == 0;
+	const bool bNeedsTangents = bNeedsNormals || Mesh->GetElementTangentCount() == 0;
+	if (bNeedsNormals)
+	{
+		FMath::CalculateNormals(Vertices.GetData(), Vertices.Num(), Indices.GetData(), Indices.Num());
+	}
+
+	if (bNeedsTangents)
+	{
+		FMath::CalculateTangents(Vertices.GetData(), Vertices.Num(), Indices.GetData(), Indices.Num());
+	}
+
+	for (int32 i = 0; i < Vertices.Num(); i++)
+	{
+		FVertexPNCT Vertex = Vertices[i];
+
+		if (IsSkeletal)
+		{
+			FVector4 Position = FVector4(Vertex.Position, 1.f) * BindGlobalTransform;
+			Vertex.Position = FVector(Position.X, Position.Y, Position.Z);
+
+			FVector4 Normal = FVector4(Vertex.Normal, 0.f) * BindGlobalTransformForNormal;
+			Vertex.Normal = FVector(Normal.X, Normal.Y, Normal.Z).Normalized();
+
+			FVector4 Tangent = FVector4(Vertex.Tangent.XYZ, 0.f) * BindGlobalTransformForNormal;
+			const FVector TangentDirection = FVector(Tangent.X, Tangent.Y, Tangent.Z).Normalized();
+			Vertex.Tangent = FVector4(TangentDirection, Vertex.Tangent.W);
+		}
+
+		OutModelMeshData.Vertices.Add(Vertex);
+	}
+
+	for (uint32 Index : Indices)
+	{
+		OutModelMeshData.Indices.Add(VertexOffset + Index);
+	}
+
+	for (int32 i = 0; i < Materials.Num(); i++)
+	{
+		OutModelMeshData.MaterialSlots.Add(Materials[i]);
+	}
 }
 
 void FFbxImporter::ParseMaterial(const std::filesystem::path& ParentPath, fbxsdk::FbxSurfaceMaterial* Material, FMeshMaterialSlot& OutMaterial)
@@ -563,146 +690,4 @@ void FFbxImporter::ParseSkin(const TArray<int32>& VertexToControlPoints, const T
 	}
 }
 
-void FFbxImporter::BuildNodeHierarchy(int32 ParentNodeIndex, fbxsdk::FbxNode* Current, TMap<uint64, int32>& NodeToIndexMap, TMap<int32, int32>& NodeIndexToBoneIndexMap, TArray<FModelNode>& OutNodes, TArray<FModelBone>& OutBones, TArray<FMeshNode>& OutMeshNodes)
-{
-	if (!Current)
-	{
-		return;
-	}
 
-	int32 NodeIndex = OutNodes.Num();
-
-	NodeToIndexMap[Current->GetUniqueID()] = NodeIndex;
-
-	FModelNode& ModelNode = OutNodes.AddDefaulted_GetRef();
-	ModelNode.Name = Current->GetName();
-	ModelNode.ParentNodeIndex = ParentNodeIndex;
-
-	fbxsdk::FbxAMatrix& LocalTransform = Current->EvaluateLocalTransform();
-	ModelNode.LocalTransform = ConvertMatrix(LocalTransform);
-
-	if (Current->GetMesh())
-	{
-		FMeshNode& MeshNode = OutMeshNodes.AddDefaulted_GetRef();
-		MeshNode.FbxNode = Current;
-		MeshNode.NodeIndex = NodeIndex;
-	}
-
-	if (Current->GetSkeleton())
-	{
-		FModelBone& ModelBone = OutBones.AddDefaulted_GetRef();
-		ModelBone.NodeIndex = NodeIndex;
-
-		int32 CurrentParentNodeIndex = ParentNodeIndex;
-		while (CurrentParentNodeIndex != -1 && !NodeIndexToBoneIndexMap.Contains(CurrentParentNodeIndex))
-		{
-			CurrentParentNodeIndex = OutNodes[CurrentParentNodeIndex].ParentNodeIndex;
-		}
-
-		ModelBone.ParentBoneIndex = -1;
-		if (NodeIndexToBoneIndexMap.Contains(CurrentParentNodeIndex))
-		{
-			ModelBone.ParentBoneIndex = NodeIndexToBoneIndexMap[CurrentParentNodeIndex];
-		}
-
-		NodeIndexToBoneIndexMap[NodeIndex] = OutBones.Num() - 1;
-	}
-
-	for (int32 i = 0; i < Current->GetChildCount(); i++)
-	{
-		BuildNodeHierarchy(NodeIndex, Current->GetChild(i), NodeToIndexMap, NodeIndexToBoneIndexMap, OutNodes, OutBones, OutMeshNodes);
-	}
-}
-
-void FFbxImporter::ProcessMeshNode(const std::filesystem::path& FbxPath, const TMap<uint64, int32>& NodeToIndexMap, const TMap<int32, int32>& NodeIndexToBoneIndexMap, TArray<FModelBone>& Bones, const FMeshNode& MeshNode, FModelMeshData& OutModelMeshData, TArray<FModelVertexInfluences>& OutVertexInfluencesList, TArray<FModelMesh>& OutMeshs)
-{
-	bool IsSkeletal = Bones.Num();
-
-	fbxsdk::FbxMesh* Mesh = MeshNode.FbxNode->GetMesh();
-
-	TArray<FVertexPNCT> Vertices;
-	TArray<int32> VertexToControlPoint;
-	TArray<FMeshMaterialSlot> Materials;
-	TArray<FTriangleFace> Faces;
-	ParseMesh(FbxPath, Mesh, Vertices, VertexToControlPoint, Materials, Faces);
-
-	std::sort(Faces.begin(), Faces.end(), [](const FTriangleFace& A, const FTriangleFace& B) { return A.MaterialSlotIndex < B.MaterialSlotIndex; });
-
-	uint32 VertexOffset = OutModelMeshData.Vertices.Num();
-	uint32 IndexOffset = OutModelMeshData.Indices.Num();
-	uint32 MaterialOffset = OutModelMeshData.MaterialSlots.Num();
-
-	FModelMesh& ModelMesh = OutMeshs.AddDefaulted_GetRef();
-	ModelMesh.NodeIndex = MeshNode.NodeIndex;
-;		ModelMesh.FirstSection = OutModelMeshData.Sections.Num();
-	ModelMesh.SectionCount = 0;
-
-	FMatrix BindGlobalTransform;
-	ParseSkin(VertexToControlPoint, NodeToIndexMap, NodeIndexToBoneIndexMap, MeshNode, Bones, OutVertexInfluencesList, BindGlobalTransform);
-
-	FMatrix BindGlobalTransformForNormal = BindGlobalTransform.Inverse().GetTransposed();
-
-	TArray<uint32> Indices;
-	FMeshSection* CurrentSection = nullptr;
-	for (int32 i = 0; i < Faces.Num(); i++)
-	{
-		const FTriangleFace& Face = Faces[i];
-		if (CurrentSection == nullptr || CurrentSection->MaterialSlotIndex != MaterialOffset + Face.MaterialSlotIndex)
-		{
-			CurrentSection = &OutModelMeshData.Sections.AddDefaulted_GetRef();
-			CurrentSection->StartIndex = IndexOffset + (i * 3);
-			CurrentSection->IndexCount = 0;
-			CurrentSection->MaterialSlotIndex = MaterialOffset + Face.MaterialSlotIndex;
-
-			ModelMesh.SectionCount++;
-		}
-
-		CurrentSection->IndexCount += 3;
-
-		Indices.Add(Face.VertexIndices[0]);
-		Indices.Add(Face.VertexIndices[1]);
-		Indices.Add(Face.VertexIndices[2]);
-	}
-
-	const bool bNeedsNormals = Mesh->GetElementNormalCount() == 0;
-	const bool bNeedsTangents = bNeedsNormals || Mesh->GetElementTangentCount() == 0;
-	if (bNeedsNormals)
-	{
-		FMath::CalculateNormals(Vertices.GetData(), Vertices.Num(), Indices.GetData(), Indices.Num());
-	}
-
-	if (bNeedsTangents)
-	{
-		FMath::CalculateTangents(Vertices.GetData(), Vertices.Num(), Indices.GetData(), Indices.Num());
-	}
-
-	for (int32 i = 0; i < Vertices.Num(); i++)
-	{
-		FVertexPNCT Vertex = Vertices[i];
-
-		if (IsSkeletal)
-		{
-			FVector4 Position = FVector4(Vertex.Position, 1.f) * BindGlobalTransform;
-			Vertex.Position = FVector(Position.X, Position.Y, Position.Z);
-
-			FVector4 Normal = FVector4(Vertex.Normal, 0.f) * BindGlobalTransformForNormal;
-			Vertex.Normal = FVector(Normal.X, Normal.Y, Normal.Z).Normalized();
-
-			FVector4 Tangent = FVector4(Vertex.Tangent.XYZ, 0.f) * BindGlobalTransformForNormal;
-			const FVector TangentDirection = FVector(Tangent.X, Tangent.Y, Tangent.Z).Normalized();
-			Vertex.Tangent = FVector4(TangentDirection, Vertex.Tangent.W);
-		}
-
-		OutModelMeshData.Vertices.Add(Vertex);
-	}
-
-	for (uint32 Index : Indices)
-	{
-		OutModelMeshData.Indices.Add(VertexOffset + Index);
-	}
-
-	for (int32 i = 0; i < Materials.Num(); i++)
-	{
-		OutModelMeshData.MaterialSlots.Add(Materials[i]);
-	}
-}

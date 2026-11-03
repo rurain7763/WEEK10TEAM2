@@ -2,7 +2,8 @@
 
 #include "Editor/EditorUI/EditorPanel.h"
 #include "Editor/LevelEditor/MultipleViewports/Adapter/MultipleViewportsAdapterTypes.h"
-#include "Render/RenderingInfo.h"
+#include "Render/SceneRenderTargets.h"
+#include "Render/Texture2D.h"
 class FMultipleViewportsAdapter;
 class FGizmo;
 
@@ -23,13 +24,8 @@ public:
 
 	// Core가 계산한 View Rect에 맞춰 해당 Slot의 활성 상태와 렌더 타깃을 갱신한다.
 	void SetView(int32 ViewIndex, const FRect& Rect, bool bActive);
-	// 화면 표시용(sRGB) 렌더 정보. 후처리 이후의 FXAA·Overlay가 그린다.
-	const FRenderingInfo& GetRenderingInfo(int32 ViewIndex) const;
-	// 씬(Linear, float) 렌더 정보. 불투명·반투명·안개가 그린다.
-	const FRenderingInfo& GetSceneRenderingInfo(int32 ViewIndex) const;
-	// 씬용·표시용 렌더 정보를 같은 깊이 타깃으로 구성한다. PIE 창 타깃도 같은 구성을 쓴다.
-	static void BuildViewRenderingInfos(FRenderingInfo& OutSceneInfo, FRenderingInfo& OutViewInfo,
-		FTexture2D* SceneColor, FTexture2D* ViewColor, FTexture2D* Depth, uint32 Width, uint32 Height);
+	// View별 텍스처 묶음. 출력 연결과 Clear/Load는 각 패스에서 구성한다.
+	const FSceneRenderTargets& GetRenderTargets(int32 ViewIndex) const;
 	// FXAA 결과를 임시로 받는 View별 텍스처. ColorTarget과 크기·포맷이 같다.
 	FTexture2D* GetFxaaTarget(int32 ViewIndex) const;
 
@@ -56,15 +52,7 @@ private:
 		// View 하나의 Rect·활성 상태·Color/Depth 타깃과 렌더 정보를 담는다.
 		FRect Rect{};
 		bool bActive = false;
-		uint32 Width = 0;
-		uint32 Height = 0;
-		// 씬은 Linear로 SceneColorTarget(float)에 그리고, 인코딩한 결과를 ColorTarget(sRGB 8비트)에 담아 화면에 표시한다
-		TUniquePtr<FTexture2D> SceneColorTarget;
-		TUniquePtr<FTexture2D> ColorTarget;
-		TUniquePtr<FTexture2D> DepthTarget;
-		TUniquePtr<FTexture2D> FxaaTarget;
-		FRenderingInfo SceneRenderingInfo{};	// SceneColorTarget + DepthTarget
-		FRenderingInfo RenderingInfo{};			// ColorTarget + DepthTarget
+		FSceneRenderTargets RenderTargets;
 	};
 
 	// Rect 크기가 바뀐 Slot의 Color/Depth Texture와 렌더 정보를 다시 만든다.

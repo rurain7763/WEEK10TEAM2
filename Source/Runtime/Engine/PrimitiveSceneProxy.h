@@ -13,6 +13,13 @@ class UStaticMesh;
 class USkeletalMesh;
 class UMaterial;
 
+enum EObjectMaskBit
+{
+    OM_CastShadow = 0x1,
+    OM_ReceiveShadow = 0x2,
+    OM_ReceiveDecals = 0x4
+};
+
 class FPrimitiveSceneProxy
 {
 public:
@@ -37,6 +44,7 @@ public:
     bool IsCastShadow() const { return bCastShadow; }
     bool IsReceiveShadow() const { return bReceiveShadow; }
     bool IsHiddenInGame() const { return bHiddenInGame; }
+    uint32 GetObjectMask() const { return ObjectMask; }
 
     uint8 GetLODCount() const { return RenderState ? RenderState->LODCount : 1; }
     const FMeshRenderState* GetRenderState() const { return RenderState.get(); }
@@ -70,6 +78,7 @@ private:
     bool bCastShadow = true;
     bool bReceiveShadow = true;
     bool bHiddenInGame = false;
+    uint32 ObjectMask = 0;
 };
 
 class FStaticMeshSceneProxy : public FPrimitiveSceneProxy

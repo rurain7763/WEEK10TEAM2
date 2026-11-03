@@ -1,4 +1,5 @@
 #include "EnginePCH.h"
+#include "Component/DecalComponent.h"
 #include "Actor.h"
 
 #include "Camera/CameraComponent.h"
@@ -476,6 +477,11 @@ UActorComponent* AActor::AddComponent(UClass* ComponentClass, FName Name)
 		}
 	}
 
+	if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(NewComponent))
+	{
+		World->GetScene().AddDecal(DecalComponent);
+	}
+
 	//ScriptComponent가 추가될 때
 	if (UScriptComponent* ScriptComponent = Cast<UScriptComponent>(NewComponent))
 	{
@@ -560,6 +566,10 @@ void AActor::DestroyComponent(UActorComponent* Component)
 	{
 		World->GetScene().RemovePrimitive(Primitive);
         World->GetPhysicsScene().RemovePrimitive(Primitive);
+	}
+	else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(Component))
+	{
+		World->GetScene().RemoveDecal(DecalComponent);
 	}
 	else if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 	{

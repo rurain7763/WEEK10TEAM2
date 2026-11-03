@@ -32,6 +32,7 @@ class UPrimitiveComponent :public USceneComponent
 		PROPERTY(bVisible)
 		PROPERTY(bCastShadow)
 		PROPERTY(bReceiveShadow)
+		PROPERTY(bReceiveDecals)
 		PROPERTY(bGenerateOverlapEvents)
 		PROPERTY(bBlockComponet)
 		PROPERTY(ShowBeginOverlapLog)
@@ -80,6 +81,17 @@ public:
 	void SetReceiveShadow(bool bInReceiveShadow)
 	{
 		bReceiveShadow = bInReceiveShadow;
+		MarkRenderStateDirty();
+	}
+
+	bool IsReceiveDecals() const
+	{
+		return bReceiveDecals;
+	}
+
+	void SetReceiveDecals(bool EnableReceiveDecal)
+	{
+		bReceiveDecals = EnableReceiveDecal;
 		MarkRenderStateDirty();
 	}
 
@@ -141,6 +153,7 @@ protected:
 	bool bVisible = true;
 	bool bCastShadow = true;
 	bool bReceiveShadow = true;
+	bool bReceiveDecals = true;
 
 	bool bGenerateOverlapEvents = true;
 	bool bBlockComponet = false;

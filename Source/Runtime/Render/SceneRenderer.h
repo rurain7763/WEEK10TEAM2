@@ -11,10 +11,12 @@ class FGammaEncodeRenderer;
 class FFXAARenderer;
 class FFogRenderer;
 class FSkyboxRenderer;
+class FDecalRenderer;
 struct FDirectionalLightInfo;
 class FRenderQueue;
 class FTexture2D;
 struct FRenderingInfo;
+struct FSceneRenderTargets;
 class UWorld;
 class FRenderer;
 
@@ -58,24 +60,24 @@ public:
 	void Init(FRenderer* InRenderer);
 	void BeginFrame();
 	void Render(UWorld& World, const FSceneView& SceneView, const FSceneRenderSettings& Settings,
-		const FRenderingInfo& SceneInfo, const FRenderingInfo& ViewInfo, FTexture2D* FxaaTemp, FRenderQueue& RenderQueue);
+		const FSceneRenderTargets& Targets, FRenderQueue& RenderQueue);
 
 private:
 	// 불투명 물체에 대한 Pass
-	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld,
-		const FRenderingInfo& SceneInfo, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
+	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
+	void RenderDecalPass(const FSceneView& SceneView, const UWorld& ViewWorld, const FSceneRenderTargets& Targets);
 	// 월드에 배치된 텍스트 그리기
 	void DrawWorldText(const FSceneView& SceneView, const UWorld& ViewWorld);
 	// 안개에 대한 Pass
-	void RenderFogPass(const FSceneView& SceneView, const UWorld& ViewWorld, const FRenderingInfo& SceneInfo);
+	void RenderFogPass(const FSceneView& SceneView, const UWorld& ViewWorld, const FSceneRenderTargets& Targets);
 	// Gamma Encode Pass: Linear 씬 컬러를 톤매핑하고 화면 표시용 sRGB로 인코딩한다
-	void RenderGammaEncodePass(const FRenderingInfo& SceneInfo, const FRenderingInfo& ViewInfo, bool bEncode, 
+	void RenderGammaEncodePass(const FSceneRenderTargets& Targets, bool bEncode,
 		bool bToneMap, float ExposureEV, bool bLetterbox, float TargetAspect, float InDamageIntensity, const FCameraScreenEffects& ScreenEffect);
 
 	// FXAA Pass
-	void RenderFXAAPass(FTexture2D* FxaaTarget, const FRenderingInfo& ViewInfo);
+	void RenderFXAAPass(const FSceneRenderTargets& Targets);
 	// Depth Pass
-	void RenderDepthPass(const FSceneView& SceneView, const FRenderingInfo& ViewInfo);
+	void RenderDepthPass(const FSceneView& SceneView, const FSceneRenderTargets& Targets);
 
 	FRenderer* Renderer = nullptr;
 	TUniquePtr<FSkyboxRenderer> SkyboxRenderer;
@@ -84,6 +86,7 @@ private:
 	TUniquePtr<FGammaEncodeRenderer> GammaEncodeRenderer;
 	TUniquePtr<FDepthViewRenderer> DepthViewRenderer;
 	TUniquePtr<FTextRenderer> TextRenderer;
+	TUniquePtr<FDecalRenderer> DecalRenderer;
 
 	// 여러 View가 아틀라스 하나를 같이 쓰므로 마지막으로 그린 내용을 기억한다.
 	const UWorld* ShadowAtlasWorld = nullptr;

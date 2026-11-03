@@ -39,6 +39,7 @@
 #include "GameFramework/PlayerController.h"
 
 #include "Component/ShapeComponent.h"
+#include "Component/DecalComponent.h"
 #include "Engine/GameViewportClient.h"
 
 namespace
@@ -483,13 +484,11 @@ void UEditorEngine::RenderMultipleViewports()
 			SceneView,
 			SceneRenderSettings,
 			*ViewWorld,
-			ViewportsPanel->GetSceneRenderingInfo(ViewIndex),
-			ViewportsPanel->GetRenderingInfo(ViewIndex),
-			GetFxaaTargetForView(ViewIndex),
+			ViewportsPanel->GetRenderTargets(ViewIndex),
 			RenderQueue);
 
-		const FRenderingInfo& RenderingInfo = ViewportsPanel->GetRenderingInfo(ViewIndex);
-		RenderOverlayPass(ViewIndex, *ViewWorld, RenderingInfo, SceneView.ViewProjection, SceneView.Location, SceneView.Forward, RenderQueue);
+		const FSceneRenderTargets& Targets = ViewportsPanel->GetRenderTargets(ViewIndex);
+		RenderOverlayPass(ViewIndex, *ViewWorld, Targets, SceneView.ViewProjection, SceneView.Location, SceneView.Forward, RenderQueue);
 	}
 
 	// 별도 PIE 창은 패널 View 뒤에 PlayWorld를 한 번 더 캡처해 그린다.
@@ -514,12 +513,10 @@ void UEditorEngine::RenderMultipleViewports()
 			SceneView,
 			SceneRenderSettings,
 			*ViewWorld,
-			PIETargets.SceneInfo,
-			PIETargets.ViewInfo,
-			GetFxaaTargetForView(PIEViewIndex),
+			PIETargets,
 			RenderQueue);
 
-		RenderOverlayPass(PIEViewIndex, *ViewWorld, PIETargets.ViewInfo, SceneView.ViewProjection, SceneView.Location, SceneView.Forward, RenderQueue);
+		RenderOverlayPass(PIEViewIndex, *ViewWorld, PIETargets, SceneView.ViewProjection, SceneView.Location, SceneView.Forward, RenderQueue);
 		CopyPIEWindowToBackbuffer();
 	}
 
@@ -683,16 +680,20 @@ void UEditorEngine::HandleOnPIEWorldChanged(UWorld* OldWorld, UWorld* NewWorld)
 	PlayWorld = NewWorld;
 }
 
-void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, const FRenderingInfo& ViewRenderingInfo, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue)
+void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, const FSceneRenderTargets& Targets, const FMatrix& ViewProjection, const FVector& ViewCameraLocation, const FVector& ViewCameraForward, FRenderQueue& RenderQueue)
 {
 	// 실행 중인 PIE View에는 Grid·Gizmo·Outline 같은 에디터 표시를 그리지 않는다.
 	// 별도 PIE 창은 편집 입력이 없으므로 일시정지 중에도 게임 화면만 보인다.
 	const bool bShowEditorOverlay = !IsPlayingView(ViewIndex) && ViewIndex != FMultipleViewportsAdapter::ExternalViewIndex;
 
-	FRenderingInfo PassInfo = ViewRenderingInfo;
-
-	for (FRenderingDesc& Color : PassInfo.ColorRenderTargets)
-		Color.LoadOp = ERenderTargetLoadOp::Load;
+	FRenderingInfo PassInfo;
+	PassInfo.ViewportSetting.Width = Targets.Width;
+	PassInfo.ViewportSetting.Height = Targets.Height;
+	FRenderingDesc ColorDesc;
+	ColorDesc.Texture = Targets.ViewColor.get();
+	ColorDesc.LoadOp = ERenderTargetLoadOp::Load;
+	PassInfo.ColorRenderTargets.Add(ColorDesc);
+	PassInfo.DepthStencil.Texture = Targets.Depth.get();
 
 	PassInfo.DepthStencil.LoadOp = ERenderTargetLoadOp::Load;
 
@@ -710,6 +711,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 		{
 			LineBatcher->BuildVertexBuffer(ViewWorld);
 		}
+
 		for (TObjectIterator<UDirectionalLightComponent> DirLight; DirLight; ++DirLight)
 		{
 			if (DirLight && DirLight->GetOwner() && DirLight->GetOwner()->GetWorld() == &ViewWorld)
@@ -717,6 +719,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 				DirLight->DrawDebug(LineBatcher.get());
 			}
 		}
+
 		// Point·Spot 라이트의 범위는 선택된 액터의 라이트만 그린다 (Spot의 IsDebugLine이 켜져 있으면 항상).
 		// 반복자는 파생 클래스도 돌기 때문에 Spot도 여기서 함께 그린다.
 		for (TObjectIterator<UPointLightComponent> LocalLight; LocalLight; ++LocalLight)
@@ -726,6 +729,14 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 				continue;
 			if (Selection.IsSelected(Owner) || LocalLight->ShouldAlwaysDrawDebug())
 				LocalLight->DrawDebug(LineBatcher.get());
+		}
+
+		for (TObjectIterator<UDecalComponent> Itr; Itr; ++Itr)
+		{
+			if (Itr && Itr->GetOwner() && Itr->GetOwner()->GetWorld() == &ViewWorld)
+			{
+				Itr->DrawDebug(LineBatcher.get());
+			}
 		}
 	}
 
@@ -785,7 +796,7 @@ void UEditorEngine::RenderOverlayPass(const int32 ViewIndex, UWorld& ViewWorld, 
 		//auto Target = Cast<UPrimitiveComponent>(Gizmo->GetTarget());
 		//FBox box = Target->CalcBounds();
 
-		RenderCommand::ClearDepthStencil(ViewRenderingInfo.DepthStencil.Texture);
+		RenderCommand::ClearDepthStencil(Targets.Depth.get());
 
 		GizmoRenderer->OnRender(
 			*Gizmo,
@@ -1072,7 +1083,7 @@ void UEditorEngine::PasteCopiedActors()
 
 // View 하나의 씬을 그린다.
 void UEditorEngine::RenderFrame(const FSceneView& SceneView, const FSceneRenderSettings& Settings, UWorld& ViewWorld, 
-	const FRenderingInfo& SceneRenderingInfo, const FRenderingInfo& ViewRenderingInfo, FTexture2D* FxaaTexture, FRenderQueue& InRenderQueue)
+	const FSceneRenderTargets& Targets, FRenderQueue& InRenderQueue)
 {
 	FSceneRenderSettings ViewSettings = Settings;
 	FSceneView View = SceneView;
@@ -1108,7 +1119,7 @@ void UEditorEngine::RenderFrame(const FSceneView& SceneView, const FSceneRenderS
 		}
 	}
 
-	SceneRenderer.Render(ViewWorld, View, ViewSettings, SceneRenderingInfo, ViewRenderingInfo, FxaaTexture, InRenderQueue);
+	SceneRenderer.Render(ViewWorld, View, ViewSettings, Targets, InRenderQueue);
 }
 
 // View Texture가 포함된 UI를 Swapchain 백버퍼에 합성한다. Present는 FEngineLoop가 한다.

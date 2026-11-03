@@ -280,6 +280,57 @@ namespace
 		ImGui::PopID();
 	}
 
+	bool DrawTextureProperty(UTexture2D** TexturePtr)
+	{
+		ImGui::PushID(TexturePtr);
+		bool bChanged = false;
+		UTexture2D* Texture = *TexturePtr;
+		const ImVec2 ThumbnailSize(64.0f, 64.0f);
+
+		if (Texture && Texture->GetResource())
+		{
+			ImGui::Image((ImTextureID)Texture->GetResource()->GetRawSRV(), ThumbnailSize);
+		}
+		else
+		{
+			ImGui::Button("Empty##Texture", ThumbnailSize);
+		}
+
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::Texture))
+			{
+				if (Payload->DataSize == sizeof(UTexture2D*))
+				{
+					UTexture2D* DroppedTexture = *static_cast<UTexture2D* const*>(Payload->Data);
+					if (*TexturePtr != DroppedTexture)
+					{
+						*TexturePtr = DroppedTexture;
+						bChanged = true;
+					}
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
+
+		Texture = *TexturePtr;
+		if (Texture)
+		{
+			ImGui::TextWrapped("%s", Texture->GetPath().c_str());
+			if (ImGui::SmallButton("Clear##Texture"))
+			{
+				*TexturePtr = nullptr;
+				bChanged = true;
+			}
+		}
+		else
+		{
+			ImGui::TextDisabled("Drag a texture from the Content Drawer");
+		}
+		ImGui::PopID();
+		return bChanged;
+	}
+
 	FString GetAssetDisplayName(const FString& Path)
 	{
 		fs::path AssetPath(Path);
@@ -1022,6 +1073,10 @@ namespace
 			if (Property.Class == UMaterial::StaticClass())
 			{
 				DrawTextureSlot(reinterpret_cast<UMaterial**>(ObjPtr), 0);
+			}
+			else if (Property.Class == UTexture2D::StaticClass())
+			{
+				bChanged = DrawTextureProperty(reinterpret_cast<UTexture2D**>(ObjPtr));
 			}
 			else if (Property.Class == UFont::StaticClass())
 			{
