@@ -203,8 +203,6 @@ void UDecalComponent::ClampSettings()
     DecalSize.Y = std::max(DecalSize.Y, 0.001f);
     DecalSize.Z = std::max(DecalSize.Z, 0.001f);
     DecalColor.A = FMath::Clamp(DecalColor.A, 0.0f, 1.0f);
-    AngleFadeStart = FMath::Clamp(AngleFadeStart, 0.0f, 89.9f);
-    AngleFadeEnd = FMath::Clamp(AngleFadeEnd, AngleFadeStart + 0.1f, 90.0f);
     FadeInStartDelay = std::max(FadeInStartDelay, 0.0f);
     FadeInDuration = std::max(FadeInDuration, 0.0f);
     FadeStartDelay = std::max(FadeStartDelay, 0.0f);

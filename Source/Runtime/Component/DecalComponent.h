@@ -15,8 +15,6 @@ class UDecalComponent : public USceneComponent
         PROPERTY(DecalSize)
         PROPERTY(DecalColor)
         PROPERTY(SortOrder)
-        PROPERTY(AngleFadeStart)
-        PROPERTY(AngleFadeEnd)
         PROPERTY(FadeInStartDelay)
         PROPERTY(FadeInDuration)
         PROPERTY(FadeStartDelay)
@@ -64,20 +62,6 @@ public:
         SortOrder = Value;
         MarkRenderStateDirty();
     }
-    float GetAngleFadeStart() const { return AngleFadeStart; }
-    float GetAngleFadeEnd() const { return AngleFadeEnd; }
-    void SetAngleFadeStart(float Value)
-    {
-        AngleFadeStart = Value;
-        ClampSettings();
-        MarkRenderStateDirty();
-    }
-    void SetAngleFadeEnd(float Value)
-    {
-        AngleFadeEnd = Value;
-        ClampSettings();
-        MarkRenderStateDirty();
-    }
 
     // 공통 시간 기반 페이드 설정
     float GetFadeInStartDelay() const { return FadeInStartDelay; }
@@ -118,8 +102,6 @@ private:
     FVector DecalSize = FVector(1.0f, 2.0f, 2.0f);
     FLinearColor DecalColor = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
     int32 SortOrder = 0;
-    float AngleFadeStart = 60.0f;
-    float AngleFadeEnd = 85.0f;
     float FadeInStartDelay = 0.0f;
     float FadeInDuration = 0.0f;
     float FadeStartDelay = 0.0f;
