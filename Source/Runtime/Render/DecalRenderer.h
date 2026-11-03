@@ -5,6 +5,7 @@
 #include "Containers/Array.h"
 #include "Math/Matrix.h"
 #include "Math/Color.h"
+#include "Math/Vector2.h"
 
 class FDecalSceneProxy;
 class FTexture2D;
@@ -19,17 +20,25 @@ public:
 		FTexture2D* InDepthTexture, FTexture2D* InObjectMaskTexture, uint32& OutDrawCount, bool bGameView);
 
 private:
-	// 투영 변환 및 페이드가 반영된 데칼 색상
+	// 볼륨 투영 변환 및 페이드가 반영된 데칼 색상
 	struct FDecalConstants
 	{
 		FMatrix InvViewProjection;
 		FMatrix InvWorld;
+		FMatrix WorldViewProjection;
 		FLinearColor Tint;
+		FVector2 InvTargetSize;
+		FVector2 Padding;
 	};
-	static_assert(sizeof(FDecalConstants) == 144);
+	static_assert(sizeof(FDecalConstants) == 224);
 
 	FPipelineState PipelineState;
 	TUniquePtr<FConstantBuffer> ConstantBuffer;
+
+	// 프로젝션용 박스 버퍼
+	TUniquePtr<FVertexBuffer> VolumeVertexBuffer;
+	TUniquePtr<FIndexBuffer> VolumeIndexBuffer;
+
 
 	// 뷰별 가시 데칼 목록의 메모리 재사용
 	TArray<const FDecalSceneProxy*> VisibleDecals;

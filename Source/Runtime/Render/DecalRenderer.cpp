@@ -1,33 +1,79 @@
 #include "EnginePCH.h"
 
 #include "DecalRenderer.h"
-#include "Asset/AssetManager.h"
-#include "Component/DecalComponent.h"
 #include "Engine/DecalSceneProxy.h"
-#include "Math/Frustum.h"
-#include "Render/ColorWorkflow.h"
 #include "Render/Material.h"
 #include "RenderResourceManager.h"
 #include "RenderCommand.h"
+#include "Asset/AssetManager.h"
+#include "Render/ColorWorkflow.h"
+#include "Component/DecalComponent.h"
+#include "Render/Texture2D.h"
+#include "Math/Frustum.h"
 #include <algorithm>
 
 bool FDecalRenderer::Init()
 {
+	// TODO: SV_VertexID 기반 박스 생성으로 전용 VB/IB 대체 검토
+
+	// 중심 원점 및 한 변 길이 1의 박스 위치
+	const FVector Vertices[] =
+	{
+		FVector(-0.5f, -0.5f, -0.5f),
+		FVector(-0.5f,  0.5f, -0.5f),
+		FVector(0.5f,  0.5f, -0.5f),
+		FVector(0.5f, -0.5f, -0.5f),
+		FVector(-0.5f, -0.5f,  0.5f),
+		FVector(-0.5f,  0.5f,  0.5f),
+		FVector(0.5f,  0.5f,  0.5f),
+		FVector(0.5f, -0.5f,  0.5f)
+	};
+
+	// 기존 Cube와 동일한 바깥 방향의 삼각형 연결
+	const uint32 Indices[] =
+	{
+		0, 1, 2, 0, 2, 3, // -Z 면
+		7, 6, 5, 7, 5, 4, // +Z 면
+		1, 5, 6, 1, 6, 2, // +Y 면
+		4, 0, 3, 4, 3, 7, // -Y 면
+		4, 5, 1, 4, 1, 0, // -X 면
+		3, 2, 6, 3, 6, 7  // +X 면
+	};
+
+	VolumeVertexBuffer = RenderCommand::CreateStaticVertexBuffer(Vertices, sizeof(Vertices), sizeof(FVector));
+	VolumeIndexBuffer = RenderCommand::CreateStaticIndexBuffer(Indices, static_cast<uint32>(sizeof(Indices) / sizeof(Indices[0])));
+	ConstantBuffer = RenderCommand::CreateConstantBuffer(sizeof(FDecalConstants));
+
+	// 실제 GPU 자원의 초기화 결과 확인
+	if (!VolumeVertexBuffer->GetBuffer() || !VolumeIndexBuffer->GetBuffer() || !ConstantBuffer->GetBuffer())
+	{
+		VolumeVertexBuffer.reset();
+		VolumeIndexBuffer.reset();
+		ConstantBuffer.reset();
+		HTR_LOG(Error, "[Decal] Failed to create volume buffers");
+		return false;
+	}
+
+
 	PipelineState.Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/DecalShader.hlsl");
 	PipelineState.Topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	PipelineState.RasterizerState = ERasterizerState::DecalCullFront;
 	PipelineState.BlendState = EBlendState::AlphaBlend;
 	PipelineState.DepthStencilState = EDepthStencilState::Disabled;
-
-	ConstantBuffer = RenderCommand::CreateConstantBuffer(sizeof(FDecalConstants));
 
 	return true;
 }
 
-// 가시 데칼의 선별 및 DBuffer 제출 횟수 집계
+// 가시 데칼 볼륨의 DBuffer 제출 및 횟수 집계
 void FDecalRenderer::Render(const TArray<FDecalSceneProxy*>& InDecalProxies, const FMatrix& ViewProjection,
 	FTexture2D* InDepthTexture, FTexture2D* InObjectMaskTexture, uint32& OutDrawCount, bool bGameView)
 {
 	OutDrawCount = 0;
+
+	if (!VolumeVertexBuffer)
+	{
+		return;
+	}
 
 	// 현재 뷰에 영향을 주는 데칼 선별
 	VisibleDecals.Reset();
@@ -57,41 +103,63 @@ void FDecalRenderer::Render(const TArray<FDecalSceneProxy*>& InDecalProxies, con
 			return Left->GetId() < Right->GetId();
 		});
 
-	FDecalConstants DecalConstants{};
-	DecalConstants.InvViewProjection = ViewProjection.Inverse();
 	UTexture2D* WhiteTexture = UAssetManager::GetAssetByPath<UTexture2D>("WhiteTexture");
 
+	FDecalConstants DecalConstants{};
+	DecalConstants.InvViewProjection = ViewProjection.Inverse();
+	DecalConstants.InvTargetSize = FVector2(
+		1.0f / static_cast<float>(InDepthTexture->GetWidth()),
+		1.0f / static_cast<float>(InDepthTexture->GetHeight()));
+
 	RenderCommand::BindPipelineState(PipelineState);
-	RenderCommand::BindConstantBuffer(0, ConstantBuffer.get(), EShaderBindFlagBits::Pixel);
+	RenderCommand::BindConstantBuffer(0, ConstantBuffer.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 	RenderCommand::BindShaderResource(0, InDepthTexture, EShaderBindFlagBits::Pixel);
 	RenderCommand::BindShaderResource(1, InObjectMaskTexture, EShaderBindFlagBits::Pixel);
+
+	// 모든 데칼이 공유하는 투영 전용 박스 연결
+	RenderCommand::BindVertexBuffer(VolumeVertexBuffer.get());
+	RenderCommand::BindIndexBuffer(VolumeIndexBuffer.get());
+	const uint32 IndexCount = VolumeIndexBuffer->GetIndexCount();
 
 	for (const FDecalSceneProxy* DecalProxy : VisibleDecals)
 	{
 		UMaterial* DecalMaterial = DecalProxy->GetMaterial();
+		if (!DecalMaterial)
+		{
+			continue;
+		}
 
-		// 데칼·머티리얼 색상과 페이드의 단일 결합
+		// 기존 데칼 색상과 머티리얼 색상의 조명 전 결합
 		const FLinearColor DecalColor = ColorWorkflow::ToShaderColor(DecalProxy->GetColor());
 		const FLinearColor BaseColor = ColorWorkflow::ToShaderColor(DecalMaterial->BaseColor);
 		DecalConstants.InvWorld = DecalProxy->GetWorldToDecal();
+		DecalConstants.WorldViewProjection = DecalProxy->GetDecalToWorld() * ViewProjection;
 		DecalConstants.Tint = FLinearColor(DecalColor.R * BaseColor.R, DecalColor.G * BaseColor.G,
 			DecalColor.B * BaseColor.B, DecalColor.A * BaseColor.A * DecalProxy->GetFadeAlpha());
+
 		RenderCommand::UpdateBufferData(ConstantBuffer.get(), &DecalConstants);
 
-		// 미지정 Albedo의 기존 흰색 텍스처 대체
+		// 미지정 색상 텍스처의 기존 흰색 리소스 대체
 		UTexture2D* Albedo = DecalMaterial->Textures.Num() > 0 && DecalMaterial->Textures[0]
 			? DecalMaterial->Textures[0] : WhiteTexture;
 		RenderCommand::BindShaderResource(2, Albedo, EShaderBindFlagBits::Pixel);
 		RenderCommand::BindSamplerState(0, DecalMaterial->SamplerState, EShaderBindFlagBits::Pixel);
-		RenderCommand::Draw(3);
+
+		// 음수 스케일에 따른 볼륨 면 방향 반전 보정
+		const bool bMirrored = DecalProxy->GetDecalToWorld().Determinant() < 0.0f;
+		RenderCommand::SetRasterizerState(bMirrored ? ERasterizerState::DecalCullBack : ERasterizerState::DecalCullFront);
+		RenderCommand::DrawIndexed(IndexCount);
 		++OutDrawCount;
 	}
 
-	// 후속 패스의 입력·출력 자원 충돌 방지
-	for (uint32 Slot = 0; Slot <= 2; ++Slot)
-	{
-		RenderCommand::UnbindShaderResource(Slot, EShaderBindFlagBits::Pixel);
-	}
+	// 다음 패스의 입력·출력 자원 충돌 방지
+	RenderCommand::UnbindShaderResource(0, EShaderBindFlagBits::Pixel);
+	RenderCommand::UnbindShaderResource(1, EShaderBindFlagBits::Pixel);
+	RenderCommand::UnbindShaderResource(2, EShaderBindFlagBits::Pixel);
+
+	// 후속 렌더링의 기본 상태 복원
+	RenderCommand::SetRasterizerState(ERasterizerState::SolidBack);
 	RenderCommand::SetBlendState(EBlendState::Opaque);
 	RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
+
 }

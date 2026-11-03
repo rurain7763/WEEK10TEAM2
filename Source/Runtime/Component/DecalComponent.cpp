@@ -8,6 +8,7 @@
 #include <algorithm>
 #include "GameFramework/Actor.h"
 #include "Engine/World.h"
+#include "Serialization/MathSerialization.h"
 
 // 기본 외형 및 틱 설정
 UDecalComponent::UDecalComponent()
@@ -245,9 +246,33 @@ void UDecalComponent::Serialize(json& Handle, bool bIsLoading)
     Super::Serialize(Handle, bIsLoading);
     if (bIsLoading)
     {
+        // 이전 Opacity 설정의 색상 알파 이관
+        if (!Handle.contains("DecalColor") && Handle.contains("Opacity"))
+        {
+            DecalColor.A = Handle["Opacity"].get<float>();
+        }
+        // 이전 단위 볼륨의 Transform 크기 유지
+        if (Handle.contains("Opacity") && !Handle.contains("DecalSize"))
+        {
+            DecalSize = FVector(1.0f);
+        }
         if (Handle.contains("DecalMaterial"))
         {
-            SetDecalMaterial(Handle["DecalMaterial"].is_null() ? nullptr : UMaterial::LoadMaterial(Handle["DecalMaterial"]));
+            UMaterial* Loaded = nullptr;
+            if (Handle["DecalMaterial"].is_string())
+            {
+                Loaded = UAssetManager::GetAssetByPath<UMaterial>(Handle["DecalMaterial"].get<FString>());
+                if (Loaded && Loaded->MaterialDomain != EMaterialDomain::Decal)
+                {
+                    Loaded = UMaterial::CreateInstance(Loaded);
+                    Loaded->MaterialDomain = EMaterialDomain::Decal;
+                }
+            }
+            else if (!Handle["DecalMaterial"].is_null())
+            {
+                Loaded = UMaterial::LoadMaterial(Handle["DecalMaterial"]);
+            }
+            SetDecalMaterial(Loaded);
         }
         if (Handle.contains("Active"))
         {
@@ -271,8 +296,48 @@ void UDecalComponent::Serialize(json& Handle, bool bIsLoading)
 void UDecalComponent::Serialize(FStructuredArchive::FRecord Record)
 {
     Super::Serialize(Record);
+    FArchive& Ar = Record.GetUnderlyingArchive();
     UMaterial* Loaded = DecalMaterial;
-    UMaterial::SerializeMaterialReference(Record.EnterField("DecalMaterial"), Loaded);
+    if (Ar.IsLoading() && !Ar.HasAnyPortFlags(EPropertyPortFlags::PPF_Duplicate))
+    {
+        // 이전 반사 속성의 외형 및 알파 이관
+        FStructuredArchive::FRecord Properties = Record.EnterRecord("Properties");
+        bool bHasLegacyOpacity = false;
+        if (TOptional<FStructuredArchive::FSlot> Slot = Properties.TryEnterField("Opacity", false))
+        {
+            Slot.GetValue() << DecalColor.A;
+            Loaded = nullptr;
+            bHasLegacyOpacity = true;
+        }
+        if (TOptional<FStructuredArchive::FSlot> Slot = Properties.TryEnterField("DecalColor", false))
+        {
+            Slot.GetValue() << DecalColor;
+        }
+        // 명시된 크기 우선 및 이전 단위 볼륨 유지
+        if (TOptional<FStructuredArchive::FSlot> Slot = Properties.TryEnterField("DecalSize", false))
+        {
+            Slot.GetValue() << DecalSize;
+        }
+        else if (bHasLegacyOpacity)
+        {
+            DecalSize = FVector(1.0f);
+        }
+        if (TOptional<FStructuredArchive::FSlot> Slot = Properties.TryEnterField("DecalMaterial", false))
+        {
+            UObject* LegacyMaterial = nullptr;
+            Slot.GetValue() << LegacyMaterial;
+            Loaded = Cast<UMaterial>(LegacyMaterial);
+            if (Loaded && Loaded->MaterialDomain != EMaterialDomain::Decal)
+            {
+                Loaded = UMaterial::CreateInstance(Loaded);
+                Loaded->MaterialDomain = EMaterialDomain::Decal;
+            }
+        }
+    }
+    if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("DecalMaterial", true))
+    {
+        UMaterial::SerializeMaterialReference(Slot.GetValue(), Loaded);
+    }
     bool bActive = IsActive();
     bool bHidden = IsHiddenInGame();
     if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("Active", true))

@@ -30,6 +30,8 @@ public:
     virtual void UpdateRenderState();
     void OnMeshRenderDataChanged();
     virtual void OnMeshDestroyed();
+    // 표면 셰이더의 프록시별 자원 연결
+    virtual void BindSRVs() const {}
     virtual ID3D11ShaderResourceView* GetBoneMatricesSRV() const { return nullptr; }
 
     UPrimitiveComponent* GetComponent() const { return Component; }
@@ -105,6 +107,7 @@ class FSkeletalMeshSceneProxy : public FPrimitiveSceneProxy
 public:
     FSkeletalMeshSceneProxy(USkeletalMeshComponent* InComponent);
     ~FSkeletalMeshSceneProxy() override;
+    void BindSRVs() const override;
 
     void UpdateRenderState() override;
     void OnMeshDestroyed() override;

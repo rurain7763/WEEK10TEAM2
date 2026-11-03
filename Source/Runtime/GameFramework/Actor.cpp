@@ -1,5 +1,4 @@
 #include "EnginePCH.h"
-#include "Component/DecalComponent.h"
 #include "Actor.h"
 
 #include "Camera/CameraComponent.h"
@@ -15,6 +14,7 @@
 #include "Component/PrimitiveComponent.h"
 #include "Component/MovementComponent.h"
 #include "Camera/CameraTypes.h"
+#include "GameFramework/Actor/DecalActor.h"
 
 enum class EAttachmentRule;
 
@@ -477,11 +477,6 @@ UActorComponent* AActor::AddComponent(UClass* ComponentClass, FName Name)
 		}
 	}
 
-	if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(NewComponent))
-	{
-		World->GetScene().AddDecal(DecalComponent);
-	}
-
 	//ScriptComponent가 추가될 때
 	if (UScriptComponent* ScriptComponent = Cast<UScriptComponent>(NewComponent))
 	{
@@ -567,10 +562,6 @@ void AActor::DestroyComponent(UActorComponent* Component)
 		World->GetScene().RemovePrimitive(Primitive);
         World->GetPhysicsScene().RemovePrimitive(Primitive);
 	}
-	else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(Component))
-	{
-		World->GetScene().RemoveDecal(DecalComponent);
-	}
 	else if (UExponentialHeightFogComponent* Fog = Cast<UExponentialHeightFogComponent>(Component))
 	{
 		World->GetScene().RemoveFogInfo(Fog->GetUUID());
@@ -596,8 +587,25 @@ void AActor::OnDefaultSubobjectCreated(UObject* Subobject)
 UActorComponent* AActor::FindComponentByName(FName Name) const
 {
 	for (UActorComponent* Component : Components)
+	{
 		if (Component && Component->GetFName() == Name)
+		{
 			return Component;
+		}
+	}
+
+	// 데칼 액터의 이전 기본 컴포넌트 이름 호환
+	if (GetClass()->IsChildOf(ADecalActor::StaticClass()))
+	{
+		if (Name == FName("UDecalComponent"))
+		{
+			return FindComponentByName(FName("DecalComponent"));
+		}
+		if (Name == FName("UBillboardComponent"))
+		{
+			return FindComponentByName(FName("DecalBillboard"));
+		}
+	}
 	return nullptr;
 }
 

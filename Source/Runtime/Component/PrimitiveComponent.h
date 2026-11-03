@@ -62,6 +62,10 @@ public:
 	virtual void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) {}
 
 	virtual void PostEditChangeProperty(const FProperty& Property) override;
+	// 이전 Receiver 저장 이름의 읽기 호환
+	using Super::Serialize;
+	void Serialize(json& Handle, bool bIsLoading) override;
+	void Serialize(FStructuredArchive::FRecord Record) override;
 	//
 	// FShader* GetShader() const { return Shader.get(); };
 

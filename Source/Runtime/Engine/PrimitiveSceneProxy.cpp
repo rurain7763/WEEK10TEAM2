@@ -181,6 +181,13 @@ FSkeletalMeshSceneProxy::~FSkeletalMeshSceneProxy()
 {
 }
 
+// 기존 표면 셰이더의 본 행렬 슬롯 연결
+void FSkeletalMeshSceneProxy::BindSRVs() const
+{
+    ID3D11ShaderResourceView* SRV = BoneMatrixSRV.Get();
+    RenderCommand::GetContext()->VSSetShaderResources(13, 1, &SRV);
+}
+
 bool FSkeletalMeshSceneProxy::UpdateBoneMatrixBuffer()
 {
     const auto* ActualComponent = Cast<USkeletalMeshComponent>(GetComponent());

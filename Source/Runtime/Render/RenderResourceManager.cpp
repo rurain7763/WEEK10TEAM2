@@ -24,6 +24,11 @@ void FRenderResourceManager::ScanShaders(const fs::path& ShaderRoot)
 		if (Entry.path().filename() == "UberLit.hlsl") continue;
 		if (Entry.path().filename() == "TileLightCulling.hlsl") continue;
 		if (Entry.path().filename() == "SurfaceShader.hlsl") continue;
+		// 현재 DBuffer 경로와 함께 실행하지 않는 이전 자체 조명 셰이더 제외
+		if (Entry.path().filename() == "ScreenSpaceDecal.hlsl")
+		{
+			continue;
+		}
 
 		FString Path = Entry.path().generic_string();
 		LoadOrCompileShader(Path);

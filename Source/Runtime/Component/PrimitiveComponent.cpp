@@ -6,6 +6,8 @@
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Engine/Scene.h"
 #include "Engine/World.h"
+#include "Serialization/Archive.h"
+#include "Serialization/StructuredArchiveSlots.h"
 
 namespace
 {
@@ -88,6 +90,39 @@ void UPrimitiveComponent::PostEditChangeProperty(const FProperty& Property)
 {
 	Super::PostEditChangeProperty(Property);
 	MarkRenderStateDirty();
+}
+
+// 이전 JSON Receiver 이름의 현재 설정 이관
+void UPrimitiveComponent::Serialize(json& Handle, bool bIsLoading)
+{
+	Super::Serialize(Handle, bIsLoading);
+	if (bIsLoading && !Handle.contains("bReceivesDecals") && Handle.contains("bReceiveDecals"))
+	{
+		SetReceivesDecals(Handle["bReceiveDecals"].get<bool>());
+	}
+}
+
+// 이전 구조화 Receiver 이름의 현재 설정 이관
+void UPrimitiveComponent::Serialize(FStructuredArchive::FRecord Record)
+{
+	Super::Serialize(Record);
+	FArchive& Ar = Record.GetUnderlyingArchive();
+	if (!Ar.IsLoading() || Ar.HasAnyPortFlags(EPropertyPortFlags::PPF_Duplicate))
+	{
+		return;
+	}
+
+	FStructuredArchive::FRecord Properties = Record.EnterRecord("Properties");
+	bool bReceiveDecals = bReceivesDecals;
+	if (TOptional<FStructuredArchive::FSlot> Slot = Properties.TryEnterField("bReceivesDecals", false))
+	{
+		Slot.GetValue() << bReceiveDecals;
+	}
+	else if (TOptional<FStructuredArchive::FSlot> Slot = Properties.TryEnterField("bReceiveDecals", false))
+	{
+		Slot.GetValue() << bReceiveDecals;
+	}
+	SetReceivesDecals(bReceiveDecals);
 }
 
 
