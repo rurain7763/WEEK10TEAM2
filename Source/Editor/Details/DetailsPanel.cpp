@@ -931,7 +931,46 @@ namespace
 						}
 						ImGui::EndCombo();
 					}
+					// 표면 머티리얼의 데칼 색상 수신 방식 편집
+					if (Effective && Effective->MaterialDomain == EMaterialDomain::Surface &&
+						Effective->ParamLayout == EMaterialParamLayout::StaticMesh)
+					{
+						ImGui::TableNextRow();
+						ImGui::TableSetColumnIndex(0);
+						ImGui::TextUnformatted("Decal Color Blend");
 
+						ImGui::TableSetColumnIndex(1);
+						ImGui::SetNextItemWidth(-1.0f);
+
+						const EColorBlendMode ColorBlendModes[] = {
+							EColorBlendMode::Alpha,
+							EColorBlendMode::Multiply
+						};
+
+						if (ImGui::BeginCombo("##DecalColorBlendMode",
+							ColorBlending::ToString(Effective->DecalColorBlendMode)))
+						{
+							for (const EColorBlendMode Mode : ColorBlendModes)
+							{
+								const bool bSelected = Effective->DecalColorBlendMode == Mode;
+								if (ImGui::Selectable(ColorBlending::ToString(Mode), bSelected) && !bSelected)
+								{
+									Override = EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
+									if (Override)
+									{
+										Override->DecalColorBlendMode = Mode;
+										Effective = Override;
+									}
+								}
+
+								if (bSelected)
+								{
+									ImGui::SetItemDefaultFocus();
+								}
+							}
+							ImGui::EndCombo();
+						}
+					}
 					ImGui::EndTable();
 				}
 				ImGui::TreePop();

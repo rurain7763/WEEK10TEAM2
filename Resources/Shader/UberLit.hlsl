@@ -2,7 +2,7 @@
 
 #ifndef HITORI_UBER_LIT_INCLUDED
 #define HITORI_UBER_LIT_INCLUDED
-
+#include "ColorBlend.hlsli"
 // EViewMode 순서와 일치해야 한다.
 #define VIEWMODE_LIT          0
 #define VIEWMODE_UNLIT        1
@@ -153,6 +153,8 @@ cbuffer StaticMeshMaterialParams : register(b1)
     float Shininess;
     float3 SpecularColor;
     uint bFlipNormalGreen;
+    uint DecalColorBlendMode;
+    uint3 MaterialPadding;
 };
 
 cbuffer PerObjectConstants : register(b2)
@@ -1003,8 +1005,8 @@ FPSOutput mainPS(FPSInput Input)
     float4 TextureColor = AlbedoTexture.Sample(AlbedoSampler, Input.UV + UVScrollOffset);
     float4 DecalColor = DecalTexture.Load(int3(Input.Position.xy, 0));
     float4 SurfaceColor = TextureColor * BaseColor;
-    SurfaceColor.rgb = SurfaceColor.rgb * (1.f - DecalColor.a) + DecalColor.rgb;
-
+    SurfaceColor.rgb = BlendPremultipliedColor(SurfaceColor.rgb, DecalColor.rgb, DecalColor.a, DecalColorBlendMode);
+    
     float3 Albedo = SurfaceColor.rgb;
     float Alpha = bOpaque ? 1.0f : SurfaceColor.a;
 

@@ -45,6 +45,7 @@ UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
 	Instance->bFlipNormalGreen = Source->bFlipNormalGreen;
 	Instance->bAffectBaseColor = Source->bAffectBaseColor;
 	Instance->bAffectNormal = Source->bAffectNormal;
+	Instance->DecalColorBlendMode = Source->DecalColorBlendMode;
 
 	// ParamBuffer는 TUniquePtr라 복사할 수 없다.
 	// 원본이 갖고 있으면 같은 크기로 새로 만들어 준다. 내용은 매 프레임 갱신되므로 옮기지 않는다.
@@ -98,6 +99,7 @@ json UMaterial::SaveMaterial(const UMaterial* Material)
 	Out["bFlipNormalGreen"] = Material->bFlipNormalGreen;
 	Out["bAffectBaseColor"] = Material->bAffectBaseColor;
 	Out["bAffectNormal"] = Material->bAffectNormal;
+	Out["DecalColorBlendMode"] = ColorBlending::ToString(Material->DecalColorBlendMode);
 	Out["SamplerState"] = Material->SamplerState == ESamplerState::LinearWrap ? "LinearWrap" : "LinearClamp";
 	Out["BlendState"] = Material->BlendState == EBlendState::AlphaBlend ? "AlphaBlend" : "Opaque";
 
@@ -192,6 +194,7 @@ UMaterial* UMaterial::LoadMaterial(const json& In)
 	{
 		Instance->bAffectNormal = In["bAffectNormal"].get<bool>();
 	}
+	Instance->DecalColorBlendMode = ColorBlending::FromString(In.value("DecalColorBlendMode", FString("Alpha")));
 	return Instance;
 }
 
@@ -272,6 +275,18 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 	{
 		Slot.GetValue() << bAffectNormal;
 	}
+	
+	// 수신 데칼 색상 합성 방식의 선택 필드 직렬화
+	FString ColorBlendName = Ar.IsLoading() ? FString("Alpha") : FString(ColorBlending::ToString(DecalColorBlendMode));
+	if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("DecalColorBlendMode", true))
+	{
+		Slot.GetValue() << ColorBlendName;
+	}
+	if (Ar.IsLoading())
+	{
+		DecalColorBlendMode = ColorBlending::FromString(ColorBlendName);
+	}
+	
 	// enum은 이름 문자열로 (UE 텍스트 포맷도 enum을 이름으로 쓴다)
 	FString Sampler = SamplerState == ESamplerState::LinearWrap ? "LinearWrap" : "LinearClamp";
 	Record << SA_VALUE("SamplerState", Sampler);

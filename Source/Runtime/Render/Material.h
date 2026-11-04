@@ -5,8 +5,7 @@
 #include "Render/RenderStates.h"
 #include "Render/Texture2D.h"
 #include "Math/Color.h"
-#include "Render/Buffer.h"
-
+#include "Render/ColorBlendMode.h"
 
 class FShader;
 
@@ -32,8 +31,10 @@ struct FStaticMeshMaterialParams
 	float Shininess;
 	FVector SpecularColor;
 	uint32 bFlipNormalGreen;
+	uint32 DecalColorBlendMode;
+	uint32 MaterialPadding[3];
 };
-static_assert(sizeof(FStaticMeshMaterialParams) == 48);
+static_assert(sizeof(FStaticMeshMaterialParams) == 64);
 
 struct FBillboardMaterialParams
 {
@@ -64,6 +65,9 @@ public:
 	FLinearColor SpecularColor = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
 	// OpenGL(Y+) 규칙으로 만든 노멀맵을 DirectX(Y-) 규칙으로 읽도록 G를 뒤집는다 (언리얼 Flip Green Channel)
 	bool bFlipNormalGreen = false;
+
+	// 수신 머티리얼 색상 합성 방식
+	EColorBlendMode DecalColorBlendMode = EColorBlendMode::Alpha;
 
 	// 데칼 색상 및 노멀의 독립 적용 설정
 	bool bAffectBaseColor = true;

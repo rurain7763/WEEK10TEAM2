@@ -753,6 +753,9 @@ void FRenderer::UpdateMaterialParams(const FRenderPacket& RenderPacket)
 		Params.SpecularColor = FVector(Specular.R, Specular.G, Specular.B);
 		Params.bFlipNormalGreen = RenderPacket.Material->bFlipNormalGreen ? 1u : 0u;
 
+		// 수신 머티리얼의 색상 합성 방식을 셰이더 상수로 전달
+		Params.DecalColorBlendMode = static_cast<uint32>(RenderPacket.Material->DecalColorBlendMode);
+
 		RenderCommand::UpdateBufferData(RenderPacket.Material->ParamBuffer.get(), &Params, sizeof(FStaticMeshMaterialParams));
 		// Gouraud는 VS에서 스페큘러를 계산하므로 Shininess가 VS에도 필요하다.
 		RenderCommand::BindConstantBuffer(1, RenderPacket.Material->ParamBuffer.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
