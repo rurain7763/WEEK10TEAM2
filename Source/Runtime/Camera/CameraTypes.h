@@ -22,16 +22,15 @@ struct FMinimalViewInfo
 	void BlendViewInfo(const FMinimalViewInfo& OtherInfo, float OtherWeight);
 };
 
-struct FBillboardView
+// 한 View의 카메라 월드 위치와 정규화된 방향 축.
+struct FViewBasis
 {
 	FVector Location;
 	FVector Forward;
 	FVector Right;
 	FVector Up;
 
-	static FBillboardView FromView(const FMinimalViewInfo& View);
-
-	FMatrix MakeMatrix(const FVector& Position, float Width, float Height) const;
+	static FViewBasis FromView(const FMinimalViewInfo& View);
 };
 
 // 화면 가장자리를 어둡게 하는 효과. 셰이더에서 톤매핑 전 Linear 색에 곱한다

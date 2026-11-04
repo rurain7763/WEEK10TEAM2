@@ -6,6 +6,8 @@
 namespace ResourcePaths
 {
 	constexpr const char* SplashImage = "Resources/Splash/Splash.png";
+	constexpr const char* FakeSpotLightBeamImage = "Resources/Textures/FakeSpotLight_Beam.png";
+	constexpr const char* FakeSpotLightImage = "Resources/Textures/FakeSpotLight_Soft.png";
 
 	// 에디터 UI와 새로 만든 텍스트 컴포넌트가 함께 쓰는 기본 폰트
 	constexpr const char* DefaultFont = "Resources/Fonts/Pretendard.json";
@@ -24,4 +26,6 @@ namespace ResourcePaths
 	constexpr const char* PlayerStartIcon = "Resources/Icons/S_Player.png";
 
 	constexpr const char* DecalActorIcon = "Resources/Icons/S_DecalActorIcon.png";
+
+	constexpr const char* FakeSpotLightIcon = "Resources/Icons/FakeSpotLight_64x.png";
 }

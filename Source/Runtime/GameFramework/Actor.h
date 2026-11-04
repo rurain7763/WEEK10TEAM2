@@ -16,6 +16,7 @@ class AActor : public UObject
 {
 	DECLARE_CLASS(AActor, UObject)
 	REFLECT_START(ClassName)
+		PROPERTY(bTickInEditor)
 		REFLECT_END()
 public:
 	AActor();
@@ -27,6 +28,9 @@ public:
 	virtual void BeginPlay(); // xx World->AddPrimitive 책임이동 필요
 	// 액터 자신의 로직. 컴포넌트는 각자의 PrimaryComponentTick으로 따로 실행된다.
 	virtual void Tick(float DeltaTime) {}
+	// 편집 월드에서는 명시적으로 허용한 Actor의 Tick만 실행한다.
+	virtual bool ShouldTickIfViewportsOnly() const { return bTickInEditor; }
+	bool bTickInEditor = false;
 	virtual void EndPlay();
 	bool HasActorBegunPlay() const { return bActorHasBegunPlay; }
 	// FActorTickFunction이 호출하는 진입점

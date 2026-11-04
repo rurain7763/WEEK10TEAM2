@@ -116,7 +116,7 @@ void UParticleSubUVComponent::TickComponent(float DeltaTime)
 	}
 }
 
-void UParticleSubUVComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FBillboardView& View)
+void UParticleSubUVComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewBasis& View)
 {
 	BeginViewSubmission();
 	for (int32 Index = 0; Index < Particles.Num(); ++Index)
@@ -128,7 +128,7 @@ void UParticleSubUVComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, con
 		}
 
 		const FVector ToCamera = Particle.Location - View.Location;
-		SubmitParticleToRenderQueue(RenderQueue, Index, View.MakeMatrix(Particle.Location, Particle.Scale, Particle.Scale), ToCamera.SizeSquared());
+		SubmitParticleToRenderQueue(RenderQueue, Index, BuildBillboardMatrix(View, Particle.Location, Particle.Scale, Particle.Scale), ToCamera.SizeSquared());
 	}
 }
 

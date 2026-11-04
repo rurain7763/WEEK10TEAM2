@@ -115,7 +115,7 @@ void FMinimalViewInfo::BlendViewInfo(const FMinimalViewInfo& OtherInfo, float Ot
 	bConstrainAspectRatio |= OtherInfo.bConstrainAspectRatio;
 }
 
-FBillboardView FBillboardView::FromView(const FMinimalViewInfo& View)
+FViewBasis FViewBasis::FromView(const FMinimalViewInfo& View)
 {
 	const FQuat Rotation = View.Rotation.Quaternion();
     return {
@@ -124,19 +124,4 @@ FBillboardView FBillboardView::FromView(const FMinimalViewInfo& View)
         .Right = Rotation.RotateVector(FVector(0.0f, 1.0f, 0.0f)).Normalized(),
         .Up = Rotation.RotateVector(FVector(0.0f, 0.0f, 1.0f)).Normalized()
     };
-}
-
-FMatrix FBillboardView::MakeMatrix(const FVector& Position, float Width, float Height) const
-{
-    FMatrix Matrix;
-    Matrix.SetIdentity();
-
-	FVector Facing = -Forward;
-
-    Matrix.M[0][0] = Facing.X; Matrix.M[0][1] = Facing.Y; Matrix.M[0][2] = Facing.Z;
-    Matrix.M[1][0] = Right.X * Width; Matrix.M[1][1] = Right.Y * Width; Matrix.M[1][2] = Right.Z * Width;
-    Matrix.M[2][0] = Up.X * Height; Matrix.M[2][1] = Up.Y * Height; Matrix.M[2][2] = Up.Z * Height;
-    Matrix.M[3][0] = Position.X; Matrix.M[3][1] = Position.Y; Matrix.M[3][2] = Position.Z;
-
-    return Matrix;
 }

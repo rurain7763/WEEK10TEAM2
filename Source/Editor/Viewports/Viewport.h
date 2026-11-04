@@ -8,6 +8,8 @@
 #include "Render/ViewMode.h"
 #include "Render/SceneRenderTargets.h"
 
+struct FViewBasis;
+
 // 화면의 View 하나. 출력 크기·렌더 타깃·표시 모드를 갖고, 어느 Client의 카메라로 그릴지 고른다.
 // 화면 안의 배치(위치)는 이 View를 담은 패널·창이 맡는다. 출력 크기만 넘겨받는다.
 // 편집 Client는 계속 보관하고, PIE 중에는 Game Client가 대신 그린다(언리얼의 PIE 뷰포트 전환과 같다).
@@ -70,6 +72,8 @@ public:
     FVector GetCameraLocation() const;
     FVector GetCameraForward() const;
     FVector GetCameraUp() const;
+    // 활성 카메라의 Billboard 정렬 정보를 반환한다.
+    FViewBasis GetViewBasis() const;
     // 카메라를 향하는 Billboard 월드 행렬을 만든다.
     FMatrix BuildBillboardMatrix(const FVector& WorldPosition, float Width, float Height) const;
     bool IsOrthographic() const { return GetCamera().Projection.Mode == EProjectionMode::Orthographic; }

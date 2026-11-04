@@ -3,6 +3,7 @@
 #include "Editor/Viewports/Viewport.h"
 #include "Editor/Viewports/ViewportCameraMath.h"
 #include "Camera/CameraTypes.h"
+#include "Component/BillboardComponent.h"
 
 #include <algorithm>
 #include <cmath>
@@ -90,17 +91,20 @@ FVector FViewport::GetCameraUp() const
     return NormalizedOrZero(CameraUp(GetCamera().Transform.Rotation));
 }
 
-FMatrix FViewport::BuildBillboardMatrix(const FVector& WorldPosition, const float Width, const float Height) const
+FViewBasis FViewport::GetViewBasis() const
 {
     const FCameraTransform& Camera = GetCamera().Transform;
-    const FBillboardView View{
+    return {
         .Location = Camera.Location,
         .Forward = NormalizedOrZero(CameraForward(Camera.Rotation)),
         .Right = NormalizedOrZero(CameraRight(Camera.Rotation)),
         .Up = NormalizedOrZero(CameraUp(Camera.Rotation))
     };
+}
 
-    return View.MakeMatrix(WorldPosition, Width, Height);
+FMatrix FViewport::BuildBillboardMatrix(const FVector& WorldPosition, const float Width, const float Height) const
+{
+    return UBillboardComponent::BuildBillboardMatrix(GetViewBasis(), WorldPosition, Width, Height);
 }
 
 FRay FViewport::Deproject(const FVector2 ViewLocalPosition) const

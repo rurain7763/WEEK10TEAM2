@@ -3,13 +3,27 @@
 #include "PrimitiveComponent.h"
 #include "Render/Material.h"
 
-struct FBillboardView;
+struct FViewBasis;
+
+enum class EBillboardAlignment
+{
+	FaceCamera,
+	AxisAligned
+};
+
+enum class EBillboardAxisLock
+{
+	X, NegX,
+	Y, NegY,
+	Z, NegZ
+};
 
 class UBillboardComponent : public UPrimitiveComponent
 {
 	DECLARE_CLASS(UBillboardComponent, UPrimitiveComponent)
 
 	REFLECT_START(ClassName)
+		PROPERTY(Material)
 	REFLECT_END()
 
 public:
@@ -37,24 +51,29 @@ public:
 	void SetTexture(const FString& TexturePath);
 	const FString& GetTexturePath() const { return TexturePath; }
 
-	FMatrix GetBillboardMatrix(const FBillboardView& View) const;
+	void SetAligned(EBillboardAlignment InAligned);
+	void SetAxisLock(EBillboardAxisLock InAxisLock);
+
+	FMatrix GetBillboardMatrix(const FViewBasis& View) const;
+	static FMatrix BuildBillboardMatrix(const FViewBasis& View, const FVector& Position, float Width, float Height);
 	// View가 없으면 그릴 수 없음
 	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue) override {}
 	// View별 Billboard 행렬을 계산해 같은 렌더 패킷 형식으로 제출한다.
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FBillboardView& View);
-	// View별 Adapter가 계산한 Billboard 행렬을 사용해 같은 렌더 패킷 형식으로 제출한다.
-	void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FMatrix& BillboardWorldMatrix);
+	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewBasis& View);
 
 	virtual void Serialize(json& Handle, bool bIsLoading) override;
 
 	using Super::Serialize;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
+
 protected:
+	EBillboardAlignment Aligned = EBillboardAlignment::FaceCamera;
+	EBillboardAxisLock AxisLock = EBillboardAxisLock::X;
+	
 	UMaterial* Material = nullptr;
 	UStaticMesh* QuadMesh = nullptr;
 	FBillboardMaterialParams BillboardParams;
 	FString TexturePath;
-	bool bFollowLightColor = true;
-private:
 
+	bool bFollowLightColor = true;
 };

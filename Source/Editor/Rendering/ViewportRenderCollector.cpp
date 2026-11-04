@@ -2,6 +2,7 @@
 
 #include "Editor/Rendering/ViewportRenderCollector.h"
 #include "Editor/Viewports/Viewport.h"
+#include "Camera/CameraTypes.h"
 
 #include "Component/PrimitiveComponent.h"
 #include "Component/StaticMeshComponent.h"
@@ -70,6 +71,7 @@ void FViewportRenderCollector::BuildRenderQueue(const FViewport& Viewport, FRend
     }
     const FRect Rect = Viewport.GetOutputRect();
     const FViewCamera& ViewCamera = Viewport.GetCamera();
+    const FViewBasis ViewBasis = Viewport.GetViewBasis();
     const FMatrix Projection = BuildProjectionMatrix(
         ViewCamera.Projection, Rect.Width / Rect.Height);
     const float ScaleX = Projection.M[1][0];
@@ -128,10 +130,7 @@ void FViewportRenderCollector::BuildRenderQueue(const FViewport& Viewport, FRend
         }
         else if (UBillboardComponent* Billboard = Cast<UBillboardComponent>(Primitive))
         {
-            const FVector Scale = Billboard->GetWorldScale3D();
-            Billboard->SubmitToRenderQueue(
-                OutQueue,
-                Viewport.BuildBillboardMatrix(Billboard->GetWorldLocation(), Scale.Y, Scale.Z));
+            Billboard->SubmitToRenderQueue(OutQueue, ViewBasis);
         }
         else if (auto* StaticComponent = Cast<UStaticMeshComponent>(Primitive))
         {

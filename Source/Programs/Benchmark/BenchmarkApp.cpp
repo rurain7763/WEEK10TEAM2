@@ -297,13 +297,13 @@ void UBenchmarkEngine::UpdateGizmoAndPicking()
 	if (FInputSystem::IsMousePressed(EMouseButton::Left) &&
 		!Gizmo->IsUsing() && Gizmo->GetHoveredAxis() < 0)
 	{
-		const FBillboardView BillboardView = FBillboardView::FromView(PlayerView);
+		const FViewBasis ViewBasis = FViewBasis::FromView(PlayerView);
 		const auto ResolveBillboard = [](const UBillboardComponent& Billboard, const void* Context) -> FMatrix
 		{
-			return Billboard.GetBillboardMatrix(*static_cast<const FBillboardView*>(Context));
+			return Billboard.GetBillboardMatrix(*static_cast<const FViewBasis*>(Context));
 		};
 		FHitResult Hit;
-		SelectScene(World->LineTraceSingle(Ray, Hit, ResolveBillboard, &BillboardView) ? Hit.HitComponent : nullptr);
+		SelectScene(World->LineTraceSingle(Ray, Hit, ResolveBillboard, &ViewBasis) ? Hit.HitComponent : nullptr);
 	}
 }
 
@@ -361,9 +361,9 @@ void UBenchmarkEngine::Tick(float DeltaTime)
 		SCOPE_CYCLE_COUNTER(STAT_GatherTotal);
 		RenderQueue.Reset();
 
-		const FBillboardView BillboardView = FBillboardView::FromView(PlayerView);
+		const FViewBasis ViewBasis = FViewBasis::FromView(PlayerView);
 
-		World->GatherRenderPackets(RenderQueue, &LODView, &Frustum, Renderer, &BillboardView);
+		World->GatherRenderPackets(RenderQueue, &LODView, &Frustum, Renderer, &ViewBasis);
 	}
 
 	GetEngineLoop().BeginBackbufferPass();

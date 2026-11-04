@@ -316,6 +316,21 @@ void FFbxImporter::ProcessMeshNode(const std::filesystem::path& FbxPath, const T
 	}
 }
 
+static std::filesystem::path FindValidPathFromCadidates(const std::filesystem::path* Candidates, int32 Count)
+{
+	for (int32 i = 0; i < Count; i++)
+	{
+		const std::filesystem::path& Candidate = Candidates[i];
+
+		if (std::filesystem::exists(Candidate))
+		{
+			return Candidate;
+		}
+	}
+
+	return std::filesystem::path();
+}
+
 void FFbxImporter::ParseMaterial(const std::filesystem::path& ParentPath, fbxsdk::FbxSurfaceMaterial* Material, FMeshMaterialSlot& OutMaterial)
 {
 	fbxsdk::FbxProperty DiffuseProperty = Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sDiffuse);
@@ -327,14 +342,14 @@ void FFbxImporter::ParseMaterial(const std::filesystem::path& ParentPath, fbxsdk
 		for (int32 i = 0; i < DiffuseProperty.GetSrcObjectCount<FbxFileTexture>(); i++)
 		{
 			fbxsdk::FbxFileTexture* Texture = DiffuseProperty.GetSrcObject<fbxsdk::FbxFileTexture>(i);
-			if (Texture->GetRelativeFileName())
-			{
-				OutMaterial.DiffuseTexturePath = PathUtils::ToUtf8(ParentPath / PathUtils::FromUtf8(Texture->GetRelativeFileName()));
-			}
-			else if (Texture->GetFileName())
-			{
-				OutMaterial.DiffuseTexturePath = PathUtils::ToUtf8(ParentPath / PathUtils::FromUtf8(Texture->GetFileName()));
-			}
+
+			std::filesystem::path Candidates[] = {
+				PathUtils::FromUtf8(Texture->GetFileName()),
+				ParentPath / PathUtils::FromUtf8(Texture->GetRelativeFileName()),
+				ParentPath / PathUtils::FromUtf8(Texture->GetFileName()).filename(),
+			};
+
+			OutMaterial.DiffuseTexturePath = PathUtils::ToUtf8(FindValidPathFromCadidates(Candidates, 3));
 		}
 	}
 
@@ -358,14 +373,14 @@ void FFbxImporter::ParseMaterial(const std::filesystem::path& ParentPath, fbxsdk
 		for (int32 i = 0; i < NormalProperty.GetSrcObjectCount<FbxFileTexture>(); i++)
 		{
 			fbxsdk::FbxFileTexture* Texture = NormalProperty.GetSrcObject<fbxsdk::FbxFileTexture>(i);
-			if (Texture->GetRelativeFileName())
-			{
-				OutMaterial.NormalTexturePath = PathUtils::ToUtf8(ParentPath / PathUtils::FromUtf8(Texture->GetRelativeFileName()));
-			}
-			else if (Texture->GetFileName())
-			{
-				OutMaterial.NormalTexturePath = PathUtils::ToUtf8(ParentPath / PathUtils::FromUtf8(Texture->GetFileName()));
-			}
+
+			std::filesystem::path Candidates[] = {
+				PathUtils::FromUtf8(Texture->GetFileName()),
+				ParentPath / PathUtils::FromUtf8(Texture->GetRelativeFileName()),
+				ParentPath / PathUtils::FromUtf8(Texture->GetFileName()).filename(),
+			};
+
+			OutMaterial.NormalTexturePath = PathUtils::ToUtf8(FindValidPathFromCadidates(Candidates, 3));
 		}
 	}
 }
@@ -559,7 +574,7 @@ void FFbxImporter::ParseMesh(const std::filesystem::path& FbxPath, fbxsdk::FbxMe
 
 void FFbxImporter::CompactSoftSkin(FSoftModelVertexInfluences& Skin)
 {
-	if (Skin.BoneIndices.Num() < MaxBoneInfluenceCount)
+	if (Skin.BoneIndices.Num() < 1)
 	{
 		return;
 	}

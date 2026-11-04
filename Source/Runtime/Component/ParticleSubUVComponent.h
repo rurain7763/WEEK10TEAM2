@@ -49,7 +49,7 @@ public:
 
 	using Super::SubmitToRenderQueue;
 	void SubmitToRenderQueue(FRenderQueue& RenderQueue) override {}
-	void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FBillboardView& View) override;
+	void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewBasis& View) override;
 	// Adapter가 View별 거리 정렬 입력을 만들 수 있도록 현재 파티클 배열을 읽기 전용으로 제공한다.
 	const TArray<FParticle>& GetParticlesForView() const { return Particles; }
 	// 프레임의 첫 View 전에 파티클 인덱스별 상수를 준비하고 네 View에서 재사용한다.

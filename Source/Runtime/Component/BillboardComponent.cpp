@@ -64,10 +64,94 @@ void UBillboardComponent::SetTexture(const FString& InTexturePath)
 	}
 }
 
-FMatrix UBillboardComponent::GetBillboardMatrix(const FBillboardView& View) const
+void UBillboardComponent::SetAligned(EBillboardAlignment InAligned)
 {
+	Aligned = InAligned;
+}
+
+void UBillboardComponent::SetAxisLock(EBillboardAxisLock InAxisLock)
+{
+	AxisLock = InAxisLock;
+}
+
+FMatrix UBillboardComponent::GetBillboardMatrix(const FViewBasis& View) const
+{
+	const FVector Location = GetWorldLocation();
 	const FVector Scale = GetWorldScale3D();
-	return View.MakeMatrix(GetWorldLocation(), Scale.Y, Scale.Z);
+
+	if (Aligned == EBillboardAlignment::FaceCamera)
+	{
+		return BuildBillboardMatrix(View, Location, Scale.Y, Scale.Z);
+	}
+	else if (Aligned == EBillboardAlignment::AxisAligned)
+	{
+		FVector PivotAxis;
+		switch (AxisLock)
+		{
+			case EBillboardAxisLock::X: PivotAxis = FVector::ForwardVector; break;
+			case EBillboardAxisLock::NegX: PivotAxis = FVector::BackwardVector; break;
+			case EBillboardAxisLock::Y: PivotAxis = FVector::RightVector; break;
+			case EBillboardAxisLock::NegY: PivotAxis = FVector::LeftVector; break;
+			case EBillboardAxisLock::Z: PivotAxis = FVector::UpVector; break;
+			case EBillboardAxisLock::NegZ: PivotAxis = FVector::DownVector; break;
+		};
+
+		FVector4 _WorldPivotAxis = FVector4(PivotAxis, 0.f) * GetWorldMatrix();
+		FVector WorldPivotAxis = _WorldPivotAxis.XYZ.Normalized();
+
+		FVector U = View.Location - Location;
+		U = U.Normalized();
+
+		// Quad의 정점 순서에 맞춰 카메라 쪽에 앞면이 오도록 폭 방향을 정한다.
+		FVector R = FVector::Cross(U, WorldPivotAxis);
+#if 0
+		if (FMath::IsNearlyZero(R.SizeSquared()))
+		{
+			float UDotF = FVector::Dot(U, FVector::ForwardVector);
+			float UDotR = FVector::Dot(U, FVector::RightVector);
+			float UDotU = FVector::Dot(U, FVector::UpVector);
+
+			float MinDot = FMath::Min(FMath::Min(UDotF, UDotR), UDotU);
+			if (FMath::IsNearlyEqual(MinDot, UDotF))
+			{
+				R = FVector::Cross(U, FVector::ForwardVector);
+			}
+			else if (FMath::IsNearlyEqual(MinDot, UDotR))
+			{
+				R = FVector::Cross(U, FVector::RightVector);
+			}
+			else if (FMath::IsNearlyEqual(MinDot, UDotU))
+			{
+				R = FVector::Cross(U, FVector::UpVector);
+			}
+		}
+#endif
+		R = R.Normalized();
+
+		FVector F = FVector::Cross(R, WorldPivotAxis);
+		F = F.Normalized();
+
+		return FMatrix(
+			F.X, F.Y, F.Z, 0.f,
+			R.X * Scale.Y, R.Y * Scale.Y, R.Z * Scale.Y, 0.f,
+			WorldPivotAxis.X * Scale.Z, WorldPivotAxis.Y * Scale.Z, WorldPivotAxis.Z * Scale.Z, 0.f,
+			Location.X, Location.Y, Location.Z, 1.f
+		);
+	}
+
+	return FMatrix::Identity;
+}
+
+FMatrix UBillboardComponent::BuildBillboardMatrix(const FViewBasis& View, const FVector& Position, float Width, float Height)
+{
+	FMatrix Matrix;
+	Matrix.SetIdentity();
+	const FVector Facing = -View.Forward;
+	Matrix.M[0][0] = Facing.X; Matrix.M[0][1] = Facing.Y; Matrix.M[0][2] = Facing.Z;
+	Matrix.M[1][0] = View.Right.X * Width; Matrix.M[1][1] = View.Right.Y * Width; Matrix.M[1][2] = View.Right.Z * Width;
+	Matrix.M[2][0] = View.Up.X * Height; Matrix.M[2][1] = View.Up.Y * Height; Matrix.M[2][2] = View.Up.Z * Height;
+	Matrix.M[3][0] = Position.X; Matrix.M[3][1] = Position.Y; Matrix.M[3][2] = Position.Z;
+	return Matrix;
 }
 
 // 부모 컴포넌트의 프레임 갱신을 호출한다.
@@ -98,13 +182,8 @@ FBox UBillboardComponent::CalcLocalBounds() const
 	return FBox{ Half * -1.0f, Half };
 }
 
-void UBillboardComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FBillboardView& View)
-{
-	SubmitToRenderQueue(RenderQueue, GetBillboardMatrix(View));
-}
-
-// View별 Billboard 행렬과 Material을 렌더 패킷에 담는다.
-void UBillboardComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FMatrix& BillboardWorldMatrix)
+// View별 Billboard 행렬을 계산하고 Material과 함께 렌더 패킷에 담는다.
+void UBillboardComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewBasis& View)
 {
 	if (QuadMesh == nullptr)
 		return;
@@ -140,9 +219,10 @@ void UBillboardComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const F
 	Packet.Geometry.StartIndex = 0;
 	Packet.Geometry.IndexCount = Packet.Geometry.IndexBuffer->GetIndexCount();
 	Packet.Material = Material;
-	Packet.Model = RenderQueue.StoreWorldMatrix(BillboardWorldMatrix);
+	Packet.Model = RenderQueue.StoreWorldMatrix(GetBillboardMatrix(View));
 	Packet.MaterialParamData = &BillboardParams;
 	Packet.MaterialParamDataSize = sizeof(FBillboardMaterialParams);
+
 	RenderQueue.Add(Packet);
 }
 

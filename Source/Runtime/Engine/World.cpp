@@ -158,8 +158,22 @@ void UWorld::Tick(float DeltaTime)
 		Scene.UpdateAllTransforms();
 	}
 
-	// 에디터 월드면 더이상 틱을 돌리지 않는다.
-	if (WorldType != EWorldType::Editor)
+	if (WorldType == EWorldType::Editor)
+	{
+		// 로드·스폰·Details 변경을 반영한다. 기존 등록은 재초기화하지 않는다.
+		for (ULevel* Level : Levels)
+		{
+			if (!Level) continue;
+			for (AActor* Actor : Level->GetActors())
+				if (Actor) Actor->RegisterAllActorTickFunctions(true);
+		}
+		{
+			SCOPE_CYCLE_COUNTER(STAT_ActorTick);
+			TickTaskManager.RunAllTickGroups(DeltaTime);
+		}
+		ProcessPendingDestroys();
+	}
+	else
 	{
 		//인덱스 for 문 사용 : PostInitializeComponent에서 Spawn하게 될 때 범위 for문이 깨진다
 		for (int32 i = 0; i < NewActorList.Num(); ++i)
@@ -238,7 +252,7 @@ void UWorld::ClearWorld()
 	HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
 }
 
-void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContext* LODView, const FFrustumPlanes* Frustum, FRenderer* Renderer, const FBillboardView* BillboardView)
+void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContext* LODView, const FFrustumPlanes* Frustum, FRenderer* Renderer, const FViewBasis* ViewBasis)
 {
 	// 멤버로 두어 매 프레임 용량을 재사용한다.
 	RenderStats.Reset();
@@ -469,9 +483,9 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 					const uint32 LOD = SelectedLODs[VisibleIndex];
 					StaticMeshComponent->SubmitToRenderQueue(RenderQueue, LOD);
 				}
-				else if (UBillboardComponent* Billboard = BillboardView ? Cast<UBillboardComponent>(Primitive) : nullptr)
+				else if (UBillboardComponent* Billboard = ViewBasis ? Cast<UBillboardComponent>(Primitive) : nullptr)
 				{
-					Billboard->SubmitToRenderQueue(RenderQueue, *BillboardView);
+					Billboard->SubmitToRenderQueue(RenderQueue, *ViewBasis);
 				}
 				else
 				{

@@ -18,6 +18,7 @@ class UBillboardComponent;
 class APlayerController;
 
 struct FLODViewContext;
+struct FViewBasis;
 
 struct FRenderStats
 {
@@ -54,7 +55,7 @@ public:
 
 	void ClearWorld();
 
-	void GatherRenderPackets(FRenderQueue& RenderArray, const FLODViewContext* LODView = nullptr, const FFrustumPlanes* Frustum = nullptr, FRenderer* Renderer = nullptr, const FBillboardView* BillboardView = nullptr);
+	void GatherRenderPackets(FRenderQueue& RenderArray, const FLODViewContext* LODView = nullptr, const FFrustumPlanes* Frustum = nullptr, FRenderer* Renderer = nullptr, const FViewBasis* ViewBasis = nullptr);
 
 	bool HasPlayerStart() const { return bHasPlayerStart; }
 	APlayerController* GetPlayerController() const { return PlayerController; }

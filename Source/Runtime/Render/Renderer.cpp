@@ -85,7 +85,6 @@ bool FRenderer::Init()
 		{ "BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT,  1, static_cast<UINT>(offsetof(FModelVertexInfluences, BoneIndices)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, static_cast<UINT>(offsetof(FModelVertexInfluences, Weights)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "BONECOUNT",	  0, DXGI_FORMAT_R32_SINT,			 1, static_cast<UINT>(offsetof(FModelVertexInfluences, InfluenceCount)), D3D11_INPUT_PER_VERTEX_DATA, 0 }
-
 	};
 	SurfaceSkinningPipeline.Shader = FRenderResourceManager::RegisterProgram("Surface_Skinned", SurfaceSkinningSPDesc);
 

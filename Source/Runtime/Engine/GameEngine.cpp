@@ -109,9 +109,9 @@ void UGameEngine::Tick(float DeltaTime)
 	FRenderer* Renderer = GetEngineLoop().GetRenderer();
 	RenderQueue.Reset();
 
-	const FBillboardView BillboardView = FBillboardView::FromView(PlayerView);
+	const FViewBasis ViewBasis = FViewBasis::FromView(PlayerView);
 
-	World->GatherRenderPackets(RenderQueue, &LODView, &Frustum, Renderer, &BillboardView);
+	World->GatherRenderPackets(RenderQueue, &LODView, &Frustum, Renderer, &ViewBasis);
 
 	const FSceneView SceneView{
 		.ViewProjection = ViewProjection,

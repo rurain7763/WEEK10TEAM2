@@ -108,6 +108,16 @@ void AActor::RegisterAllActorTickFunctions(bool bRegister)
 	if (bRegister && !World)
 		return;
 
+	// 편집 중에는 BeginPlay 없이 Actor만 등록한다. 컴포넌트의 게임 Tick은 켜지 않는다.
+	if (bRegister && World->GetWorldType() == EWorldType::Editor)
+	{
+		if (ShouldTickIfViewportsOnly() && PrimaryActorTick.bCanEverTick)
+			PrimaryActorTick.RegisterTickFunction(World->GetTickTaskManager());
+		else
+			PrimaryActorTick.UnRegisterTickFunction();
+		return;
+	}
+
 	// bCanEverTick이 꺼진 함수는 등록하지 않으므로 정적 메시 액터는 매 프레임 순회 대상에서 빠진다.
 	auto Apply = [&](FTickFunction& Function)
 	{
