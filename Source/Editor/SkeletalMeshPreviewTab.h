@@ -16,7 +16,7 @@ class FViewportsPanel;
 class FSkeletalMeshPreviewTab : public FEditorTab
 {
 public:
-	explicit FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh, bool& InDrawSkeletalMeshes);
+	explicit FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh);
 	virtual ~FSkeletalMeshPreviewTab() override;
 	FSkeletalMeshPreviewTab(const FSkeletalMeshPreviewTab&) = delete;
 	FSkeletalMeshPreviewTab& operator=(const FSkeletalMeshPreviewTab&) = delete;
@@ -46,7 +46,7 @@ private:
 	bool bFramed = false;
 	bool bPoseDirty = false;
 	bool bPoseSaveFailed = false;
-	bool& bDrawSkeletalMeshes;
+
 	std::filesystem::path PoseSavePath;
 
 	FPreviewViewportPanel* ViewportPanel = nullptr;

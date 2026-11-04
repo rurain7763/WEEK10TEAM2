@@ -35,8 +35,8 @@ namespace
 }
 
 
-FSkeletalMeshPreviewTab::FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh, bool& InDrawSkeletalMeshes)
-	: FEditorTab(MakeSkeletalMeshPreviewTabSettings()), bDrawSkeletalMeshes(InDrawSkeletalMeshes), SkeletalMesh(InSkeletalMesh)
+FSkeletalMeshPreviewTab::FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh)
+	: FEditorTab(MakeSkeletalMeshPreviewTabSettings()), SkeletalMesh(InSkeletalMesh)
 {
 	PreviewScene = MakeUnique<FPreviewScene>();
 	MeshActor = Cast<ASkeletalMeshActor>(PreviewScene->GetWorld()->SpawnActor(ASkeletalMeshActor::StaticClass()));
@@ -90,9 +90,6 @@ void FSkeletalMeshPreviewTab::DrawToolbar()
 		SavePose();
 	}
 	ImGui::EndDisabled();
-
-	ImGui::SameLine();
-	ImGui::Checkbox("Skeletal Mesh", &bDrawSkeletalMeshes);
 
 	if (bNeedsSave)
 	{
@@ -259,7 +256,6 @@ void FSkeletalMeshPreviewTab::UpdateBoneGizmo(const bool bInputEnabled)
 		FInputSystem::IsMouseDown(EMouseButton::Left), Viewport->GetCameraLocation(), Viewport->IsOrthographic());
 
 	const FMatrix TargetWorld = GizmoRoot->GetWorldMatrix();
-	//|| TargetWorld == PreviousTargetWorld
 	if (!BoneGizmo.IsUsing())
 	{
 		return;
