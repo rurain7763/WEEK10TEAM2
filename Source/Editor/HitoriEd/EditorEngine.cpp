@@ -725,7 +725,7 @@ void UEditorEngine::OpenSkeletalMeshViewer(USkeletalMesh* SkeletalMesh)
 	}
 
 
-	EditorUI->AddTab<FSkeletalMeshPreviewTab>(SkeletalMesh, SettingsPanel->GetMutableSettings().bDrawSkeletalMeshes)->RequestFocus();
+	EditorUI->AddTab<FSkeletalMeshPreviewTab>(SkeletalMesh)->RequestFocus();
 }
 
 FWorldContext& UEditorEngine::GetEditorWorldContext()
