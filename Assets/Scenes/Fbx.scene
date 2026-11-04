@@ -44,6 +44,7 @@
                                             "R": 0.8370000123977661
                                         },
                                         "BlendState": "Opaque",
+                                        "MaterialDomain": "Surface",
                                         "Properties": {},
                                         "SamplerState": "LinearClamp",
                                         "Shininess": 3.675213575363159,
@@ -74,6 +75,7 @@
                                             "R": 0.3333333432674408
                                         },
                                         "BlendState": "Opaque",
+                                        "MaterialDomain": "Surface",
                                         "Properties": {},
                                         "SamplerState": "LinearClamp",
                                         "Shininess": 2.0,
@@ -122,6 +124,7 @@
                                 "bCastShadow": true,
                                 "bGenerateOverlapEvents": true,
                                 "bReceiveShadow": true,
+                                "bReceivesDecals": true,
                                 "bVisible": true
                             }
                         }
@@ -162,7 +165,7 @@
                             "Name": "UAmbientLightComponent",
                             "Parent": "",
                             "Properties": {
-                                "Intensity": 1.0,
+                                "Intensity": 0.20000000298023224,
                                 "LightColor": {
                                     "A": 255,
                                     "B": 255,
@@ -202,6 +205,7 @@
                                         "R": 1.0
                                     },
                                     "BlendState": "AlphaBlend",
+                                    "MaterialDomain": "Surface",
                                     "Properties": {},
                                     "SamplerState": "LinearClamp",
                                     "Shininess": 32.0,
@@ -248,6 +252,7 @@
                                 "bCastShadow": true,
                                 "bGenerateOverlapEvents": true,
                                 "bReceiveShadow": true,
+                                "bReceivesDecals": true,
                                 "bVisible": true
                             }
                         }
@@ -314,6 +319,7 @@
                                 "bCastShadow": true,
                                 "bGenerateOverlapEvents": true,
                                 "bReceiveShadow": true,
+                                "bReceivesDecals": true,
                                 "bVisible": true
                             }
                         }
@@ -367,14 +373,14 @@
                                 "ShadowResolution": 2048,
                                 "Transform": {
                                     "Location": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
+                                        "X": -0.37179243564605713,
+                                        "Y": -0.4135969579219818,
+                                        "Z": 0.5350441932678223
                                     },
                                     "Rotation": {
-                                        "Pitch": 43.892433166503906,
-                                        "Roll": 58.06761169433594,
-                                        "Yaw": 48.04686737060547
+                                        "Pitch": 51.731510162353516,
+                                        "Roll": 80.9220199584961,
+                                        "Yaw": 78.49676513671875
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -398,6 +404,7 @@
                                         "R": 1.0
                                     },
                                     "BlendState": "AlphaBlend",
+                                    "MaterialDomain": "Surface",
                                     "Properties": {},
                                     "SamplerState": "LinearClamp",
                                     "Shininess": 32.0,
@@ -444,6 +451,7 @@
                                 "bCastShadow": true,
                                 "bGenerateOverlapEvents": true,
                                 "bReceiveShadow": true,
+                                "bReceivesDecals": true,
                                 "bVisible": true
                             }
                         }
@@ -482,13 +490,82 @@
                         {
                             "Class": "UStaticMeshComponent",
                             "Name": "UStaticMeshComponent",
-                            "OverrideMaterials": [],
+                            "OverrideMaterials": [
+                                {}
+                            ],
                             "Parent": "DefaultSceneRoot",
                             "Properties": {
                                 "ShowBeginOverlapLog": false,
                                 "ShowEndOverlapLog": false,
                                 "ShowHitLog": false,
                                 "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 4.8243727684021
+                                    }
+                                },
+                                "bBlockComponet": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "AStaticMeshActor_1",
+                    "Properties": {},
+                    "RootComponent": "DefaultSceneRoot"
+                },
+                {
+                    "Class": "ASkeletalMeshActor",
+                    "Components": [
+                        {
+                            "Class": "USceneComponent",
+                            "Name": "DefaultSceneRoot",
+                            "Parent": "",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": 1.2370860576629639,
+                                        "Y": 0.8466870784759521,
+                                        "Z": 0.5376954078674316
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "USkeletalMeshComponent",
+                            "OverrideMaterials": [],
+                            "Parent": "DefaultSceneRoot",
+                            "Properties": {
+                                "ShowBeginOverlapLog": false,
+                                "ShowEndOverlapLog": false,
+                                "ShowHitLog": false,
+                                "SkeletalMesh": null,
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
@@ -510,13 +587,258 @@
                                 "bCastShadow": true,
                                 "bGenerateOverlapEvents": true,
                                 "bReceiveShadow": true,
+                                "bReceivesDecals": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "asdnt",
+                            "OverrideMaterials": [
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BaseColor": {
+                                            "A": 1.0,
+                                            "B": 1.0,
+                                            "G": 1.0,
+                                            "R": 1.0
+                                        },
+                                        "BlendState": "Opaque",
+                                        "MaterialDomain": "Surface",
+                                        "Properties": {},
+                                        "SamplerState": "LinearClamp",
+                                        "Shininess": 20.0,
+                                        "SpecularColor": {
+                                            "A": 1.0,
+                                            "B": 0.5,
+                                            "G": 0.5,
+                                            "R": 0.5
+                                        },
+                                        "Textures": [
+                                            "Assets/Models/FbxTest/Ch15_nonPBR.fbm/Ch15_1001_Diffuse.png",
+                                            "Assets/Models/FbxTest/Ch15_nonPBR.fbm/Ch15_1001_Normal.png"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ],
+                                        "bFlipNormalGreen": false
+                                    }
+                                },
+                                {
+                                    "Base": "DefaultMaterial",
+                                    "Instance": {
+                                        "BaseColor": {
+                                            "A": 1.0,
+                                            "B": 1.0,
+                                            "G": 1.0,
+                                            "R": 1.0
+                                        },
+                                        "BlendState": "Opaque",
+                                        "MaterialDomain": "Surface",
+                                        "Properties": {},
+                                        "SamplerState": "LinearClamp",
+                                        "Shininess": 20.0,
+                                        "SpecularColor": {
+                                            "A": 1.0,
+                                            "B": 0.5,
+                                            "G": 0.5,
+                                            "R": 0.5
+                                        },
+                                        "Textures": [
+                                            "Assets/Models/FbxTest/Ch15_nonPBR.fbm/Ch15_1002_Diffuse.png",
+                                            "Assets/Models/FbxTest/Ch15_nonPBR.fbm/Ch15_1002_Normal.png"
+                                        ],
+                                        "UVScrollSpeed": [
+                                            0.0,
+                                            0.0
+                                        ],
+                                        "bFlipNormalGreen": false
+                                    }
+                                }
+                            ],
+                            "Parent": "DefaultSceneRoot",
+                            "Properties": {
+                                "ShowBeginOverlapLog": false,
+                                "ShowEndOverlapLog": false,
+                                "ShowHitLog": false,
+                                "SkeletalMesh": "Models/FbxTest/Ch15_nonPBR.fbx",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 87.7767333984375
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bBlockComponet": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": false,
                                 "bVisible": true
                             }
                         }
                     ],
-                    "Name": "AStaticMeshActor_1",
+                    "Name": "ASkeletalMeshActor_0",
                     "Properties": {},
                     "RootComponent": "DefaultSceneRoot"
+                },
+                {
+                    "Class": "ADecalActor",
+                    "Components": [
+                        {
+                            "Active": true,
+                            "Class": "UDecalComponent",
+                            "DecalMaterial": {
+                                "Base": "DefaultDecalMaterial",
+                                "Instance": {
+                                    "BaseColor": {
+                                        "A": 1.0,
+                                        "B": 1.0,
+                                        "G": 1.0,
+                                        "R": 1.0
+                                    },
+                                    "BlendState": "AlphaBlend",
+                                    "MaterialDomain": "Decal",
+                                    "Properties": {},
+                                    "SamplerState": "LinearClamp",
+                                    "Shininess": 32.0,
+                                    "SpecularColor": {
+                                        "A": 1.0,
+                                        "B": 0.5,
+                                        "G": 0.5,
+                                        "R": 0.5
+                                    },
+                                    "Textures": [
+                                        "Assets/Textures/imperfection_0004_1k_qNg2CF/imperfection_0004_ao_1k.jpg",
+                                        "Assets/Textures/imperfection_0004_1k_qNg2CF/imperfection_0004_normal_directx_1k.png"
+                                    ],
+                                    "UVScrollSpeed": [
+                                        0.0,
+                                        0.0
+                                    ],
+                                    "bFlipNormalGreen": false
+                                }
+                            },
+                            "HiddenInGame": false,
+                            "Name": "DecalComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "AngleFadeEnd": 85.0,
+                                "AngleFadeStart": 60.0,
+                                "DecalColor": {
+                                    "A": 1.0,
+                                    "B": 1.0,
+                                    "G": 1.0,
+                                    "R": 1.0
+                                },
+                                "DecalSize": {
+                                    "X": 1.0,
+                                    "Y": 2.0,
+                                    "Z": 2.0
+                                },
+                                "FadeDuration": 0.0,
+                                "FadeInDuration": 0.0,
+                                "FadeInStartDelay": 0.0,
+                                "FadeStartDelay": 0.0,
+                                "SortOrder": 0,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 1.9932591915130615,
+                                        "Y": 0.2711039185523987,
+                                        "Z": 2.1459498405456543
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": -0.0,
+                                        "Yaw": 88.10499572753906
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "Class": "UBillboardComponent",
+                            "Material": {
+                                "Base": "BillboardMaterial",
+                                "Instance": {
+                                    "BaseColor": {
+                                        "A": 1.0,
+                                        "B": 1.0,
+                                        "G": 1.0,
+                                        "R": 1.0
+                                    },
+                                    "BlendState": "AlphaBlend",
+                                    "MaterialDomain": "Surface",
+                                    "Properties": {},
+                                    "SamplerState": "LinearClamp",
+                                    "Shininess": 32.0,
+                                    "SpecularColor": {
+                                        "A": 1.0,
+                                        "B": 0.5,
+                                        "G": 0.5,
+                                        "R": 0.5
+                                    },
+                                    "Textures": [
+                                        "Resources/Icons/S_DecalActorIcon.png"
+                                    ],
+                                    "UVScrollSpeed": [
+                                        0.0,
+                                        0.0
+                                    ],
+                                    "bFlipNormalGreen": false
+                                }
+                            },
+                            "Name": "DecalBillboard",
+                            "Parent": "DecalComponent",
+                            "Properties": {
+                                "ShowBeginOverlapLog": false,
+                                "ShowEndOverlapLog": false,
+                                "ShowHitLog": false,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bBlockComponet": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bReceiveShadow": true,
+                                "bReceivesDecals": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "ADecalActor_1",
+                    "Properties": {},
+                    "RootComponent": "DecalComponent"
                 }
             ],
             "Properties": {}
