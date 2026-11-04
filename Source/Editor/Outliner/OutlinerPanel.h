@@ -42,6 +42,9 @@ public:
     // Actor를 선택 목록에 넣거나 뺀다 (Shift·Ctrl 클릭).
     void ToggleActorSelection(AActor* Actor);
 
+    // 파괴 예정 액터의 패널 내부 참조 정리
+    void NotifyActorDestroyed(AActor* Actor);
+
     // Primary 액터 (마지막으로 선택한 액터)
     AActor* GetSelectedActor() const;
 

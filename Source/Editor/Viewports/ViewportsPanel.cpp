@@ -1,4 +1,4 @@
-﻿#include "EnginePCH.h"
+#include "EnginePCH.h"
 #include "Editor/Viewports/ViewportsPanel.h"
 #include "Editor/Viewports/ViewportCameraMath.h"
 #include "Editor/Gizmo/Gizmo.h"
@@ -7,7 +7,6 @@
 
 #include "Core/StatOverlay.h"
 #include "Core/Stats/LightweightStats.h"
-#include "Render/RenderCommand.h"
 #include "Math/Color.h"
 
 #include <algorithm>
@@ -532,16 +531,19 @@ void FViewportsPanel::OnRender()
 	ImDrawList* DrawList = ImGui::GetWindowDrawList();
 	DrawList->PushClipRect(ContentOrigin,
 		{ContentOrigin.x + ContentSize.x, ContentOrigin.y + ContentSize.y}, true);
-	for (int32 ViewIndex = 0; ViewIndex < 4; ++ViewIndex)
+	for (int32 ViewIndex = 0; ViewIndex < ViewCount; ++ViewIndex)
 	{
 		const FViewSlot& Slot = Slots[ViewIndex];
 		FTexture2D* ColorTarget = Slot.Viewport.GetColorTarget();
 		if (!Slot.bActive || !ColorTarget)
+		{
 			continue;
+		}
 
+		// 패널 레이아웃 좌표와 최종 표시용 렌더 타깃의 결합
 		const FRect& Rect = ViewRects[ViewIndex];
-		const ImVec2 ViewMin{ContentOrigin.x + Rect.X, ContentOrigin.y + Rect.Y};
-		const ImVec2 ViewMax{ViewMin.x + Rect.Width, ViewMin.y + Rect.Height};
+		const ImVec2 ViewMin{ ContentOrigin.x + Rect.X, ContentOrigin.y + Rect.Y };
+		const ImVec2 ViewMax{ ViewMin.x + Rect.Width, ViewMin.y + Rect.Height };
 		DrawList->AddImage(ColorTarget->GetSRV(), ViewMin, ViewMax);
 	}
 	DrawList->PopClipRect();
@@ -744,6 +746,7 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 		Lines.Add({std::format("  Process {:.2f} MB",
 			static_cast<double>(FStatOverlay::GetProcessWorkingSetBytes()) / BytesPerMegabyte), ValueColor});
 	}
+
 	if (FStatOverlay::IsEnabled(EStatFlags::Shadow))
 	{
 		Lines.Add({ "Shadow", TitleColor });
@@ -758,6 +761,15 @@ void FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 		Lines.Add({ std::format("  Cached Maps {}", shadow.NumCachedShadowMaps), ValueColor });
 		Lines.Add({ std::format("  Memory         {:.2f} MB",
 			static_cast<int64>(shadow.ShadowMapMemoryBytes) / BytesPerMegabyte), ValueColor });
+	}
+
+	if (FStatOverlay::IsEnabled(EStatFlags::Decal))
+	{
+		const FDecalStats& Decal = FStatOverlay::GetDecalStats();
+
+		Lines.Add({ "Decal", TitleColor });
+		Lines.Add({ std::format("  Draw Calls (All Views): {}", Decal.DrawCount), ValueColor});
+		Lines.Add({ std::format("  CPU Submission: {:.2f} ms", Decal.DrawTime), ValueColor});
 	}
 
 	struct FProfileStatLine

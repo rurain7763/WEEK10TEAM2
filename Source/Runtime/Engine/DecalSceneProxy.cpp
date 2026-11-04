@@ -18,8 +18,6 @@ void FDecalSceneProxy::Refresh()
     Material = Component->GetDecalMaterial();
     Color = Component->GetDecalColor();
     SortOrder = Component->GetSortOrder();
-    AngleFadeStart = Component->GetAngleFadeStart();
-    AngleFadeEnd = Component->GetAngleFadeEnd();
     FadeAlpha = Component->GetFadeAlpha();
 
     const FVector& Size = Component->GetDecalSize();

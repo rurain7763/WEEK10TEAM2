@@ -35,18 +35,15 @@ public:
     // 원점 기준 출력 사각형. 카메라 계산 함수가 받는 FRect 형식이다.
     FRect GetOutputRect() const { return {0.0f, 0.0f, OutputSize.X, OutputSize.Y}; }
 
-    // 보이는 동안 렌더 타깃을 출력 크기(최소 1픽셀)에 맞춘다. 크기가 같으면 다시 만들지 않는다.
+    // 출력 크기에 맞춘 렌더 타깃 준비 및 동일 크기의 기존 자원 재사용
     void EnsureRenderTargets();
-    // 렌더 타깃을 놓는다. 다음 EnsureRenderTargets에서 다시 만든다.
+    // 렌더 타깃 해제 및 다음 준비 시 재생성
     void ReleaseRenderTargets() { Targets.Release(); }
-    // 씬(Linear, float) 렌더 정보. 불투명·반투명·안개가 그린다.
-    const FRenderingInfo& GetSceneRenderingInfo() const { return Targets.SceneInfo; }
-    // 화면 표시용(sRGB) 렌더 정보. 후처리 이후의 FXAA·Overlay가 그린다.
-    const FRenderingInfo& GetRenderingInfo() const { return Targets.ViewInfo; }
-    // 화면에 띄우는 최종 결과.
+    // 화면에 표시할 최종 결과 텍스처 반환
     FTexture2D* GetColorTarget() const { return Targets.ViewColor.get(); }
-    // FXAA 결과를 임시로 받는 텍스처. ColorTarget과 크기·포맷이 같다.
+    // 화면 표시용 타깃과 같은 크기·포맷의 FXAA 임시 텍스처 반환
     FTexture2D* GetFxaaTarget() const { return Targets.FxaaTemp.get(); }
+    // DBuffer를 포함한 View별 렌더 타깃 묶음 반환
     const FSceneRenderTargets& GetRenderTargets() const { return Targets; }
 
     // 활성 Client에 입력을 넘긴다. 숨겨졌거나 Input.bEnabled가 꺼져 있으면 넘기지 않는다.

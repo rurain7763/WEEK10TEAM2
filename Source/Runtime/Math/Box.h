@@ -4,7 +4,6 @@ struct FBox
 {
 	FVector Min;
 	FVector Max;
-	
 
 	FBox GetWorldAABB(const FMatrix& M) const
 	{

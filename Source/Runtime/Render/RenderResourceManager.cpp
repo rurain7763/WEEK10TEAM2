@@ -7,8 +7,6 @@
 #include "Asset/ModelData.h"
 #include <cstddef>
 
-
-
 void FRenderResourceManager::ScanShaders(const fs::path& ShaderRoot)
 {
 	std::error_code ErrorCode;
@@ -25,6 +23,12 @@ void FRenderResourceManager::ScanShaders(const fs::path& ShaderRoot)
 		if (Entry.path().extension() != ".hlsl") continue;
 		if (Entry.path().filename() == "UberLit.hlsl") continue;
 		if (Entry.path().filename() == "TileLightCulling.hlsl") continue;
+		if (Entry.path().filename() == "SurfaceShader.hlsl") continue;
+		// 현재 DBuffer 경로와 함께 실행하지 않는 이전 자체 조명 셰이더 제외
+		if (Entry.path().filename() == "ScreenSpaceDecal.hlsl")
+		{
+			continue;
+		}
 
 		FString Path = Entry.path().generic_string();
 		LoadOrCompileShader(Path);
@@ -33,28 +37,69 @@ void FRenderResourceManager::ScanShaders(const fs::path& ShaderRoot)
 
 void FRenderResourceManager::Shutdown()
 {
-	Get().VertexShaderMap.Empty();
-	Get().PixelShaderMap.Empty();
 	Get().ShaderProgramMap.Empty();
 }
 
-FShaderProgram* FRenderResourceManager::GetShaderProgram(const FString& InPath)
+FShaderProgram* FRenderResourceManager::GetShaderProgram(FName Key)
 {
-	if (TUniquePtr<FShaderProgram>* Found = Get().ShaderProgramMap.Find(InPath))
-		return Found->get();
+	if (FShaderProgramEntry* Found = Get().ShaderProgramMap.Find(Key))
+		return Found->Program.get();
 
-	HTR_LOG(Error, "[Shader] not found: {}", InPath);
+	HTR_LOG(Error, "[Shader] not found: {}", Key.ToString());
 
-	if (TUniquePtr<FShaderProgram>* Fallback =
+	if (FShaderProgramEntry* Fallback =
 		Get().ShaderProgramMap.Find("Resources/Shader/DefaultShader.hlsl"))
-		return Fallback->get();
+		return Fallback->Program.get();
 
 	return nullptr;
+}
+
+FShaderProgram* FRenderResourceManager::RegisterProgram(FName Key, const FShaderProgramDesc& Desc)
+{
+	FRenderResourceManager& Manager = Get();
+
+	if (auto* Existing = Manager.ShaderProgramMap.Find(Key))
+	{
+		return Existing->Program.get();
+	}
+
+	TArray<D3D_SHADER_MACRO> Macros;
+	for (const FShaderDefine& Define : Desc.Defines)
+	{
+		Macros.Add({ Define.Name.c_str(), Define.Value.c_str() });
+	}
+	Macros.Add({ nullptr, nullptr });
+
+	const FShaderByteCode VSCode = RenderUtil::CompileShader(Desc.Path, Desc.VertexEntry.c_str(), EShaderType::Vertex, Macros.GetData());
+	const FShaderByteCode PSCode = RenderUtil::CompileShader(Desc.Path, Desc.PixelEntry.c_str(), EShaderType::Pixel, Macros.GetData());
+	if (!VSCode.IsValid() || !PSCode.IsValid())
+	{
+		HTR_LOG(Error, "[Shader] compile failed: {}", Key.ToString());
+		return nullptr;
+	}
+
+	TUniquePtr<FVertexShader> VS = Desc.InputLayout.Num() ? RenderCommand::CreateVertexShader(VSCode, Desc.InputLayout) : RenderCommand::CreateVertexShader(VSCode);
+	TUniquePtr<FPixelShader> PS = RenderCommand::CreatePixelShader(PSCode);
+	if (!VS || !VS->IsValid() || !PS || !PS->IsValid())
+	{
+		HTR_LOG(Error, "[Shader] device create failed: {}", Key.ToString());
+		return nullptr;
+	}
+
+	FShaderProgramEntry Entry;
+	Entry.VertexShader = std::move(VS);
+	Entry.PixelShader = std::move(PS);
+	Entry.Program = MakeUnique<FShaderProgram>(Entry.VertexShader.get(), Entry.PixelShader.get());
+	Manager.ShaderProgramMap[Key] = std::move(Entry);
+
+	return Manager.ShaderProgramMap[Key].Program.get();
 }
 
 void FRenderResourceManager::LoadOrCompileShader(const FString& Path, const FString& PermutationSuffix, const D3D_SHADER_MACRO* Defines, const TArray<D3D11_INPUT_ELEMENT_DESC>& InputLayoutDescs)
 {
 	const FString Key = Path + PermutationSuffix;
+	if (ShaderProgramMap.Find(Key))
+		return;
 
 	FString VSCSOPath;
 	FString PSCSOPath;
@@ -85,12 +130,11 @@ void FRenderResourceManager::LoadOrCompileShader(const FString& Path, const FStr
 		return;
 	}
 
-	FVertexShader* VsRaw = Vs.get();
-	FPixelShader* PsRaw = Ps.get();
-
-	VertexShaderMap[VSCSOPath] = std::move(Vs);
-	PixelShaderMap[PSCSOPath] = std::move(Ps);
-	ShaderProgramMap[Key] = MakeUnique<FShaderProgram>(VsRaw, PsRaw);
+	FShaderProgramEntry Entry;
+	Entry.VertexShader = std::move(Vs);
+	Entry.PixelShader = std::move(Ps);
+	Entry.Program = MakeUnique<FShaderProgram>(Entry.VertexShader.get(), Entry.PixelShader.get());
+	ShaderProgramMap[Key] = std::move(Entry);
 
 	HTR_LOG(Info, "[Shader] loaded: {}", Key);
 }

@@ -1,52 +1,49 @@
 #pragma once
-#pragma once
 
-#include "Core/Types.h"
+#include "Buffer.h"
+#include "PipelineState.h"
 #include "Containers/Array.h"
-#include "Math/EngineMath.h"
+#include "Math/Matrix.h"
 #include "Math/Color.h"
-#include "Render/Buffer.h"
-#include "Render/PipelineState.h"
+#include "Math/Vector2.h"
 
-class FRenderer;
 class FDecalSceneProxy;
-class UStaticMesh;
-class UWorld;
-struct FSceneView;
-struct FRenderingInfo;
+class FTexture2D;
 
-// 화면 위치 복원 및 데칼 볼륨 투영의 GPU 상수
-struct FDecalConstants
-{
-    FMatrix InverseViewProjection;
-    FMatrix WorldToDecal;
-    FMatrix DecalToWorld;
-    FLinearColor DecalColor;
-    FVector2 ViewportOrigin;
-    FVector2 ViewportSize;
-    uint32 bUnlit = 0;
-    float Padding[3]{};
-};
-static_assert(sizeof(FDecalConstants) == 240);
-
-// 데칼 볼륨의 GPU 자원 및 합성 드로우 관리
+// 데칼 투영의 GPU 자원 및 드로우 제출 관리
 class FDecalRenderer
 {
 public:
-    bool Init(FRenderer* InRenderer);
-    void OnRender(const UWorld& World, const FSceneView& SceneView, const FRenderingInfo& SceneInfo);
+	bool Init();
 
+	void Render(const TArray<FDecalSceneProxy*>& InDecalProxies, const FMatrix& ViewProjection,
+		FTexture2D* InDepthTexture, FTexture2D* InObjectMaskTexture, FTexture2D* InNormalTexture,
+		uint32& OutDrawCount, bool bGameView);
 private:
-    // 기존 렌더러·셰이더·공유 메시의 비소유 참조
-    FRenderer* Renderer = nullptr;
-    FShaderProgram* Shader = nullptr;
-    UStaticMesh* VolumeMesh = nullptr;
+	// 볼륨 투영 변환 및 페이드가 반영된 데칼 색상
+	struct FDecalConstants
+	{
+		FMatrix InvViewProjection;
+		FMatrix InvWorld;
+		FMatrix WorldViewProjection;
+		FLinearColor Tint;
+		FVector2 InvTargetSize;
+		FVector2 UVScrollOffset;
+		uint32 bAffectBaseColor;
+		uint32 bAffectNormal;
+		uint32 bFlipNormalGreen;
+		uint32 DecalPadding;
+	};
+	static_assert(sizeof(FDecalConstants) == 240);
 
-    // 데칼 전용 상태 및 상수 버퍼 소유
-    FPipelineState PipelineState;
-    TUniquePtr<FConstantBuffer> DecalBuffer;
-    TUniquePtr<FConstantBuffer> MaterialBuffer;
+	FPipelineState PipelineState;
+	TUniquePtr<FConstantBuffer> ConstantBuffer;
 
-    // 뷰별 가시 목록의 메모리 재사용
-    TArray<const FDecalSceneProxy*> VisibleDecals;
+	// 프로젝션용 박스 버퍼
+	TUniquePtr<FVertexBuffer> VolumeVertexBuffer;
+	TUniquePtr<FIndexBuffer> VolumeIndexBuffer;
+
+
+	// 뷰별 가시 데칼 목록의 메모리 재사용
+	TArray<const FDecalSceneProxy*> VisibleDecals;
 };

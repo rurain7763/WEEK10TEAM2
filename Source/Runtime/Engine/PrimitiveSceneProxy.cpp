@@ -60,6 +60,22 @@ void FPrimitiveSceneProxy::UpdateRenderState()
     bReceiveShadow = Component->IsReceiveShadow();
     bReceivesDecals = Component->ReceivesDecals();
     bHiddenInGame = Component->IsHiddenInGame();
+
+    ObjectMask = 0;
+    if (bCastShadow)
+    {
+        ObjectMask |= OM_CastShadow;
+    }
+
+    if (bReceiveShadow)
+    {
+        ObjectMask |= OM_ReceiveShadow;
+    }
+
+    if (bReceivesDecals)
+    {
+        ObjectMask |= OM_ReceiveDecals;
+    }
 }
 
 FStaticMeshSceneProxy::FStaticMeshSceneProxy(UStaticMeshComponent* InComponent)
@@ -165,6 +181,7 @@ FSkeletalMeshSceneProxy::~FSkeletalMeshSceneProxy()
 {
 }
 
+// 기존 표면 셰이더의 본 행렬 슬롯 연결
 void FSkeletalMeshSceneProxy::BindSRVs() const
 {
     ID3D11ShaderResourceView* SRV = BoneMatrixSRV.Get();

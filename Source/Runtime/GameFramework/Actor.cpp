@@ -14,6 +14,7 @@
 #include "Component/PrimitiveComponent.h"
 #include "Component/MovementComponent.h"
 #include "Camera/CameraTypes.h"
+#include "GameFramework/Actor/DecalActor.h"
 
 enum class EAttachmentRule;
 
@@ -586,8 +587,25 @@ void AActor::OnDefaultSubobjectCreated(UObject* Subobject)
 UActorComponent* AActor::FindComponentByName(FName Name) const
 {
 	for (UActorComponent* Component : Components)
+	{
 		if (Component && Component->GetFName() == Name)
+		{
 			return Component;
+		}
+	}
+
+	// 데칼 액터의 이전 기본 컴포넌트 이름 호환
+	if (GetClass()->IsChildOf(ADecalActor::StaticClass()))
+	{
+		if (Name == FName("UDecalComponent"))
+		{
+			return FindComponentByName(FName("DecalComponent"));
+		}
+		if (Name == FName("UBillboardComponent"))
+		{
+			return FindComponentByName(FName("DecalBillboard"));
+		}
+	}
 	return nullptr;
 }
 

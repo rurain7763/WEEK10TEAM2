@@ -41,6 +41,7 @@ void FSettingsPanel::OnRender()
 
 	ImGui::Checkbox("Primitives", &Settings.bDrawPrimitives);
 	ImGui::Checkbox("Skeletal Mesh", &Settings.bDrawSkeletalMeshes);
+	ImGui::Checkbox("Decals", &Settings.bDrawDecals);
 	ImGui::Checkbox("Bounding Boxes", &Settings.bDrawBoundingBox);
 	ImGui::Checkbox("Object UUID", &Settings.bShowUUID);
 	ImGui::Checkbox("Grid", &Settings.bDrawGrid);
@@ -176,6 +177,7 @@ bool FSettingsPanel::SaveSettings() const
 	File << "[Show]\n";
 	File << "DrawPrimitives=" << Settings.bDrawPrimitives << "\n";
 	File << "DrawSkeletalMeshes=" << Settings.bDrawSkeletalMeshes << "\n";
+	File << "DrawDecals=" << Settings.bDrawDecals << '\n';
 	File << "DrawBoundingBox=" << Settings.bDrawBoundingBox << "\n";
 	File << "ShowUUID=" << Settings.bShowUUID << "\n";
 	File << "DrawGrid=" << Settings.bDrawGrid << "\n";
@@ -330,11 +332,12 @@ bool FSettingsPanel::LoadSettings()
                         RotationComponentMasks[Index] |= 1 << 3;
                     }
                 }
-                if (Key == "DrawPrimitives") Settings.bDrawPrimitives = std::stoi(ValueStr);
+				if (Key == "DrawPrimitives") Settings.bDrawPrimitives = std::stoi(ValueStr);
 				else if (Key == "DrawSkeletalMeshes")
 				{
 					Settings.bDrawSkeletalMeshes = ValueStr != "0";
 				}
+				else if (Key == "DrawDecals") Settings.bDrawDecals = std::stoi(ValueStr);
 				else if (Key == "DrawBoundingBox") Settings.bDrawBoundingBox = std::stoi(ValueStr);
 				else if (Key == "ShowUUID") Settings.bShowUUID = std::stoi(ValueStr);
 				else if (Key == "DrawGrid") Settings.bDrawGrid = std::stoi(ValueStr);

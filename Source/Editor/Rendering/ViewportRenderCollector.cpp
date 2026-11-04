@@ -25,7 +25,12 @@ void FViewportRenderCollector::CaptureWorld(UWorld& World, bool bDrawSkeletalMes
     for (int32 i = 0; i < Count;++i)
     {
         if (!Scene.PrimitiveFlags[i]) continue;
-        if (!bDrawSkeletalMeshes && Scene.Proxies[i]->IsUsingSkinning()) continue;
+
+        // 스켈레탈 표시 설정에 따른 렌더 후보 제외
+        if (!bDrawSkeletalMeshes && Scene.Proxies[i]->IsUsingSkinning())
+        {
+            continue;
+        }
         UPrimitiveComponent* Primitive = Scene.Proxies[i]->GetComponent();
         if (!Primitive || !Primitive->IsVisible() || !Primitive->GetOwner() ||
             Primitive->GetOwner()->GetWorld() != &World) continue;

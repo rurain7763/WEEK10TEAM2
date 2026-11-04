@@ -11,6 +11,7 @@
 #include "Asset/LOD/StaticMeshLODSelector.h"
 #include "Engine/EngineTypes.h"
 #include "Collision/PhysicsScene.h"
+#include "Core/Delegate.h"
 
 class ULevel;
 class UBillboardComponent;
@@ -72,6 +73,9 @@ public:
 	// 항상 예약하고 World Tick에서 파괴한다. 게임 코드, Lua는 이쪽을 쓴다.
 	// 이미 예약된 액터면 false를 반환한다.
 	bool RequestDestroyActor(AActor* Actor);
+
+	// 액터 메모리 해제 이전의 외부 참조 정리 통지
+	TMulticastDelegate<AActor*> OnActorDestroyed;
 
 	// View별 Billboard 행렬 공급자는 이 동기 호출 동안만 사용하며 저장하지 않는다.
 	using FBillboardTraceTransform = FMatrix(*)(const UBillboardComponent&, const void*);

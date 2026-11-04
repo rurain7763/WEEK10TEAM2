@@ -11,14 +11,14 @@ class FGammaEncodeRenderer;
 class FFXAARenderer;
 class FFogRenderer;
 class FSkyboxRenderer;
+class FDecalRenderer;
 struct FDirectionalLightInfo;
 class FRenderQueue;
 class FTexture2D;
 struct FRenderingInfo;
+struct FSceneRenderTargets;
 class UWorld;
 class FRenderer;
-class FDecalRenderer;
-
 
 struct FSceneView
 {
@@ -37,6 +37,7 @@ struct FSceneRenderSettings
 {
 	bool bDrawPrimitives = true;
 	bool bDrawSkeletalMeshes = true;
+	bool bDrawDecals = true;
 	bool bDrawShadows = true;
 	FShadowFilterSettings ShadowFilter;
 	bool bExponentialHeightFog = true;
@@ -61,29 +62,28 @@ public:
 	void Init(FRenderer* InRenderer);
 	void BeginFrame();
 	void Render(UWorld& World, const FSceneView& SceneView, const FSceneRenderSettings& Settings,
-		const FRenderingInfo& SceneInfo, const FRenderingInfo& ViewInfo, FTexture2D* FxaaTemp, FRenderQueue& RenderQueue);
+		const FSceneRenderTargets& Targets, FRenderQueue& RenderQueue);
 
 private:
+	void RenderSurfacePrepass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FSceneRenderTargets& Targets);
+
 	// 불투명 물체에 대한 Pass
-	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const FRenderingInfo& SceneInfo,
-		FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
-	// 데칼에 대한 Pass
-	void RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& World, 
-		const FRenderingInfo& SceneInfo);
+	void RenderOpaquePass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets, FRenderQueue& RenderQueue, const FDirectionalLightInfo& DirectionalLight);
+	void RenderDecalPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets);
 	// 반투명 물체에 대한 Pass
-	void RenderTranslucentPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld,
-		const FRenderingInfo& SceneInfo);	// 월드에 배치된 텍스트 그리기
+	void RenderTranslucentPass(const FSceneView& SceneView, const FSceneRenderSettings& Settings, const UWorld& ViewWorld, const FSceneRenderTargets& Targets);
+	// 월드에 배치된 텍스트 그리기
 	void DrawWorldText(const FSceneView& SceneView, const UWorld& ViewWorld);
 	// 안개에 대한 Pass
-	void RenderFogPass(const FSceneView& SceneView, const UWorld& ViewWorld, const FRenderingInfo& SceneInfo);
+	void RenderFogPass(const FSceneView& SceneView, const UWorld& ViewWorld, const FSceneRenderTargets& Targets);
 	// Gamma Encode Pass: Linear 씬 컬러를 톤매핑하고 화면 표시용 sRGB로 인코딩한다
-	void RenderGammaEncodePass(const FRenderingInfo& SceneInfo, const FRenderingInfo& ViewInfo, bool bEncode, 
+	void RenderGammaEncodePass(const FSceneRenderTargets& Targets, bool bEncode,
 		bool bToneMap, float ExposureEV, bool bLetterbox, float TargetAspect, float InDamageIntensity, const FCameraScreenEffects& ScreenEffect);
 
 	// FXAA Pass
-	void RenderFXAAPass(FTexture2D* FxaaTarget, const FRenderingInfo& ViewInfo);
+	void RenderFXAAPass(const FSceneRenderTargets& Targets);
 	// Depth Pass
-	void RenderDepthPass(const FSceneView& SceneView, const FRenderingInfo& ViewInfo);
+	void RenderDepthPass(const FSceneView& SceneView, const FSceneRenderTargets& Targets);
 
 	FRenderer* Renderer = nullptr;
 	TUniquePtr<FSkyboxRenderer> SkyboxRenderer;

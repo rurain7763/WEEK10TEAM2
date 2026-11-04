@@ -1,5 +1,4 @@
 #pragma once
-#pragma once
 
 #include "GameFramework/Actor.h"
 #include "Core/ResourcePaths.h"

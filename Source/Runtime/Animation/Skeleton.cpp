@@ -11,6 +11,7 @@ namespace
 	constexpr int32 PoseVersion = 1;
 	constexpr int32 MatrixElementCount = 16;
 
+	// 임시 파일 기록 이후의 포즈 파일 교체
 	bool WritePoseFile(const std::filesystem::path& Path, const FJsonValue& Document)
 	{
 		const FString Contents = Document.dump(2, ' ', false, FJsonValue::error_handler_t::replace);
@@ -33,6 +34,7 @@ namespace
 		return true;
 	}
 
+	// 본 식별 정보 및 유한 행렬 값 검증
 	bool ReadBonePose(const FJsonValue& Entry, const FModelBone& Bone, const FModelNode& Node, FMatrix& OutTransform)
 	{
 		if (!Entry.contains("NodeIndex") || Entry["NodeIndex"] != Bone.NodeIndex || !Entry.contains("Name") || Entry["Name"] != Node.Name || !Entry.contains("ParentNodeIndex") || Entry["ParentNodeIndex"] != Node.ParentNodeIndex || !Entry.contains("LocalTransform"))
@@ -73,6 +75,7 @@ void USkeleton::Initialize(const TArray<FModelNode>& InNodes, const TArray<FMode
 	PosePath.clear();
 }
 
+// 모델 경로에 연결된 기본 포즈 복원
 void USkeleton::LoadDefaultPose(const FString& SourcePath)
 {
 	DefaultPosePath = std::filesystem::absolute(PathUtils::FromUtf8(SourcePath + ".pose")).lexically_normal();
@@ -116,6 +119,7 @@ void USkeleton::LoadDefaultPose(const FString& SourcePath)
 	}
 }
 
+// 로컬 본 포즈 저장 및 모델의 포즈 경로 연결
 bool USkeleton::SaveDefaultPose(const TArray<FMatrix>& LocalPose, const std::filesystem::path& Destination)
 {
 	if (DefaultPosePath.empty() || Destination.empty() || _wcsicmp(Destination.extension().c_str(), L".pose") != 0 || Bones.IsEmpty() || LocalPose.Num() != Nodes.Num())
@@ -187,6 +191,7 @@ bool USkeleton::SaveDefaultPose(const TArray<FMatrix>& LocalPose, const std::fil
 	return true;
 }
 
+// 현재 적용된 포즈 파일 경로 조회
 const std::filesystem::path& USkeleton::GetPosePath() const
 {
 	return PosePath;

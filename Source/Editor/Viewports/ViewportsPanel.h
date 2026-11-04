@@ -3,7 +3,8 @@
 #include "Editor/EditorUI/EditorPanel.h"
 #include "Editor/Viewports/ViewportTypes.h"
 #include "Editor/Viewports/Viewport.h"
-#include "Render/RenderingInfo.h"
+#include "Render/SceneRenderTargets.h"
+#include "Render/Texture2D.h"
 class FGizmo;
 
 // 네 편집 View를 담는 패널. View마다 FViewport를 소유하고, 배치·View 선택·우클릭 Capture를 맡는다.
@@ -64,8 +65,6 @@ public:
 	// 활성 View의 패널 로컬 마우스 좌표를 역투영해 Ray로 반환한다. 마우스가 다른 View 위면 false다.
 	bool TryGetActiveViewRay(FVector2 LocalMousePosition, FRay& OutRay) const;
 
-
-
 	FVector2 GetContentSize() const { return {ContentSize.x, ContentSize.y}; }
 	FVector2 GetLocalMousePosition() const;
 	bool IsHovered() const;
@@ -83,7 +82,7 @@ private:
 	FGizmo* Gizmo = nullptr;
 	struct FViewSlot
 	{
-		// View 하나의 Viewport와 이번 프레임 활성 상태. 렌더 타깃은 Viewport가 소유한다.
+		// View별 Viewport와 이번 프레임의 활성 상태
 		FViewport Viewport;
 		bool bActive = false;
 	};
