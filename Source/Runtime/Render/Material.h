@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MaterialInterface.h"
+#include "Render/Buffer.h"
 #include "Render/RenderStates.h"
 #include "Render/Texture2D.h"
 #include "Math/Color.h"
@@ -63,6 +64,10 @@ public:
 	FLinearColor SpecularColor = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
 	// OpenGL(Y+) 규칙으로 만든 노멀맵을 DirectX(Y-) 규칙으로 읽도록 G를 뒤집는다 (언리얼 Flip Green Channel)
 	bool bFlipNormalGreen = false;
+
+	// 데칼 색상 및 노멀의 독립 적용 설정
+	bool bAffectBaseColor = true;
+	bool bAffectNormal = true;
 
 	bool bIsInstance = false;
 

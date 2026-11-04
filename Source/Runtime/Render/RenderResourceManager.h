@@ -2,6 +2,23 @@
 
 #include "Shader.h"
 #include "ViewMode.h"
+#include "Core/NameTypes.h"
+
+struct FShaderDefine
+{
+	FString Name;
+	FString Value;
+};
+
+// InputLayout의 SemanticName은 등록 호출이 끝날 때까지 유효해야 한다.
+struct FShaderProgramDesc
+{
+	FString Path;
+	FString VertexEntry = "mainVS";
+	FString PixelEntry = "mainPS";
+	TArray<FShaderDefine> Defines;
+	TArray<D3D11_INPUT_ELEMENT_DESC> InputLayout;
+};
 
 class FRenderResourceManager
 {
@@ -20,9 +37,12 @@ public:
 
 	void ScanShaders(const fs::path& ShaderRoot);
 
+	static FShaderProgram* RegisterProgram(FName Key, const FShaderProgramDesc& Desc);
+
 	static void Shutdown();
 
-	static FShaderProgram* GetShaderProgram(const FString& InPath);
+	static FShaderProgram* GetShaderProgram(FName Key);
+
 	static FShaderProgram* GetUberLitProgram(const FViewRenderMode& Mode, bool bHasNormalMap, bool bReceiveShadow = true, bool bUseSkinning = false);
 
 private:
@@ -32,7 +52,12 @@ private:
 
 	void LoadUberLitPermutations();
 
-	TMap<FString, TUniquePtr<FVertexShader>> VertexShaderMap;
-	TMap<FString, TUniquePtr<FPixelShader>>  PixelShaderMap;
-	TMap<FString, TUniquePtr<FShaderProgram>> ShaderProgramMap;
+	struct FShaderProgramEntry
+	{
+		TUniquePtr<FVertexShader> VertexShader;
+		TUniquePtr<FPixelShader> PixelShader;
+		TUniquePtr<FShaderProgram> Program;
+	};
+
+	TMap<FName, FShaderProgramEntry, FNameHash> ShaderProgramMap;
 };

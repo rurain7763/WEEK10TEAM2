@@ -1,5 +1,4 @@
 #pragma once
-#pragma once
 
 #include "Core/Types.h"
 #include "Math/EngineMath.h"

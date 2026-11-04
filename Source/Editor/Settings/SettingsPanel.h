@@ -16,6 +16,7 @@ struct FEditorSettings
 	// Show: 화면에 무엇을 그릴지
 	bool bDrawPrimitives = true;
 	bool bDrawSkeletalMeshes = true;
+	bool bDrawDecals = true;
 	bool bDrawBoundingBox = false;
 	bool bShowUUID = false;
 	bool bDrawGrid = true;
@@ -72,7 +73,6 @@ struct FEditorSettings
     bool bViewLocationSaved[4]{};
     bool bViewRotationSaved[4]{};
 };
-
 
 class FSettingsPanel : public IEditorPanel
 {

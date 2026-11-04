@@ -129,7 +129,13 @@ struct FPSInput
     float3 DiffuseLight : TEXCOORD2;
     float3 SpecularLight : TEXCOORD3;
 #endif
-    nointerpolation uint ReceivesDecals : TEXCOORD4;
+};
+
+struct FPSOutput
+{
+    float4 Color : SV_Target0;
+    float4 Normal : SV_Target1;
+    uint ObjectMask : SV_Target2;
 };
 
 cbuffer ViewConstants : register(b0)
@@ -153,8 +159,8 @@ cbuffer PerObjectConstants : register(b2)
 {
     matrix World;
     matrix NormalMatrix; // World의 역전치
-    uint ReceivesDecals;
-    float3 ObjectPadding;
+    uint ObjectMask;
+    uint3 PerObjectConstantsPadding;
 };
 
 cbuffer LightingConstants : register(b3)
@@ -210,8 +216,7 @@ StructuredBuffer<uint> SpotTileList : register(t11);
 StructuredBuffer<FShadowInfo> StructuredShadowData : register(t12);
 
 #if USE_SKINNING
-// FXC는 StructuredBuffer 안의 행렬에 pack_matrix(row_major)를 적용하지 않고 열 우선으로 읽는다.
-// CPU 행 우선 행렬이 전치되어 들어오므로 꺼낼 때 transpose로 되돌린다
+// StructuredBuffer 행렬의 CPU 행 우선 데이터 해석 보정
 StructuredBuffer<float4x4> BoneMatrices : register(t13);
 #endif
 
@@ -223,6 +228,8 @@ Texture2D NormalTexture : register(t1);
 
 Texture2DArray<float> ShadowTextureArray : register(t2);
 Texture2D<float> DirectionalLightShadowmapAtlas : register(t3);
+Texture2D DecalTexture : register(t4);
+Texture2D <float4> DecalNormalTexture:register(t5);
 
 SamplerState AlbedoSampler : register(s0);
 SamplerState ShadowPointSampler : register(s1);
@@ -784,12 +791,8 @@ float ComputeDirectionalShadowFactor(float3 WorldPosition, float3 Normal, float2
         return Shadow;
 }
 
-void ComputeTiledLighting(float3 N,
-#if USE_NORMAL_MAP
-    float3 GeoNormal,
-#endif
-float3 WorldPosition, float3 V, float n, float2 PixelPosition, out float3 DiffuseLight, out float3 SpecularLight)
-{
+void ComputeTiledLighting(float3 N, float3 GeoNormal, float3 WorldPosition, float3 V,
+    float n, float2 PixelPosition, out float3 DiffuseLight, out float3 SpecularLight){
     DiffuseLight = 0.0f;
     SpecularLight = 0.0f;
 
@@ -799,11 +802,11 @@ float3 WorldPosition, float3 V, float n, float2 PixelPosition, out float3 Diffus
         float3 L = -DirectionalLight.Direction;
 #if USE_NORMAL_MAP
         float GeoFactor = saturate(dot(GeoNormal, L) * 4.0f);
-        float3 ShadowNormal = GeoNormal;
 #else
         float GeoFactor = 1.0f;
-        float3 ShadowNormal = N;
 #endif
+        // 데칼 요철과 분리된 기하 노멀 기준 그림자 바이어스
+        float3 ShadowNormal = GeoNormal;
         float Shadow = ComputeDirectionalShadowFactor(WorldPosition, ShadowNormal, PixelPosition);
         
         AccumulateLight(Il * GeoFactor * Shadow, N, L, V, n, DiffuseLight, SpecularLight);
@@ -907,7 +910,9 @@ FLocalVertex GetLocalVertex(FVSInput Input)
 
 #if USE_SKINNING
     if (Input.BoneInfluenceCount == 0)
+    {
         return Vertex;
+    }
 
     // 노멀·탄젠트도 위치와 같은 본 행렬(회전·스케일 부분)로 섞어야 굽힌 자세에서 음영이 따라온다
     float3 SkinnedPosition = float3(0, 0, 0);
@@ -934,20 +939,40 @@ float3 GetLocalVertexPosition(FVSInput Input)
     return GetLocalVertex(Input).Position;
 }
 
+float3 ApplyDecalNormal(float3 GeoNormal, float3 SurfaceNormal, int2 PixelCoord)
+{
+    float4 DecalData = DecalNormalTexture.Load(int3(PixelCoord, 0));
+    float3 TargetRaw = GeoNormal * (1.0f - saturate(DecalData.a)) + DecalData.rgb;
+    float TargetLengthSquared = dot(TargetRaw, TargetRaw);
+    if (DecalData.a <= 0.0f || TargetLengthSquared <= 1.0e-8f)
+    {
+        return SurfaceNormal;
+    }
+
+    float3 TargetNormal = TargetRaw * rsqrt(TargetLengthSquared);
+    float CosAngle = clamp(dot(GeoNormal, TargetNormal), -1.0f, 1.0f);
+    if (CosAngle < -0.9999f)
+    {
+        // 반대 방향의 안정적인 반회전 축 선택
+        float3 ReferenceAxis = abs(GeoNormal.z) < 0.999f ? float3(0.0f, 0.0f, 1.0f) : float3(0.0f, 1.0f, 0.0f);
+        float3 RotationAxis = normalize(cross(GeoNormal, ReferenceAxis));
+        return normalize(2.0f * RotationAxis * dot(RotationAxis, SurfaceNormal) - SurfaceNormal);
+    }
+
+    // 기하 노멀에서 데칼 방향으로 향하는 최소 회전
+    float3 RotationAxis = cross(GeoNormal, TargetNormal);
+    float3 FirstCross = cross(RotationAxis, SurfaceNormal);
+    float3 RotatedNormal = SurfaceNormal + FirstCross + cross(RotationAxis, FirstCross) / (1.0f + CosAngle);
+    return normalize(RotatedNormal);
+}
+
 // 표면 진입점을 제외하는 라이브러리 사용 경계
 #ifndef UBER_LIT_LIBRARY_ONLY
-
-// 씬 컬러와 기하 노멀 및 수신 여부의 동시 출력
-struct FPSOutput
-{
-    float4 SceneColor : SV_Target0;
-    float4 NormalReceiver : SV_Target1;
-};
 
 FPSInput mainVS(FVSInput Input)
 {
     FPSInput Output;
-    
+
     const FLocalVertex Local = GetLocalVertex(Input);
     float4 WorldPosition = mul(float4(Local.Position, 1.0f), World);
 
@@ -955,7 +980,6 @@ FPSInput mainVS(FVSInput Input)
     Output.WorldPosition = WorldPosition.xyz;
     Output.Normal = mul(Local.Normal, (float3x3) NormalMatrix);
     Output.UV = Input.UV;
-    Output.ReceivesDecals = ReceivesDecals;
 #if USE_NORMAL_MAP
     Output.Tangent = mul(Local.Tangent, (float3x3) World);
     Output.BitangentSign = Input.Tangent.w;
@@ -970,12 +994,16 @@ FPSInput mainVS(FVSInput Input)
     return Output;
 }
 
-float4 EvaluateSurfaceColor(FPSInput Input) : SV_TARGET
+FPSOutput mainPS(FPSInput Input)
 {
+    FPSOutput Output;
+    
     float4 FinalColor = float4(0.0f, 0.0f, 0.0f, 1.0f);
 
     float4 TextureColor = AlbedoTexture.Sample(AlbedoSampler, Input.UV + UVScrollOffset);
+    float4 DecalColor = DecalTexture.Load(int3(Input.Position.xy, 0));
     float4 SurfaceColor = TextureColor * BaseColor;
+    SurfaceColor.rgb = SurfaceColor.rgb * (1.f - DecalColor.a) + DecalColor.rgb;
 
     float3 Albedo = SurfaceColor.rgb;
     float Alpha = bOpaque ? 1.0f : SurfaceColor.a;
@@ -1000,7 +1028,10 @@ float4 EvaluateSurfaceColor(FPSInput Input) : SV_TARGET
 #else
     float3 WorldNormal = Normal;
 #endif
-   
+#if SHADING_MODEL == SHADING_MODEL_PHONG || VIEWMODE == VIEWMODE_WORLDNORMAL
+    // 픽셀 조명과 노멀 시각화를 위한 데칼 요철 합성
+    WorldNormal = ApplyDecalNormal(Normal, WorldNormal, int2(Input.Position.xy));
+#endif
 #if VIEWMODE == VIEWMODE_UNLIT
     FinalColor = float4(Albedo, Alpha);
 #elif VIEWMODE == VIEWMODE_WORLDNORMAL
@@ -1027,8 +1058,12 @@ float4 EvaluateSurfaceColor(FPSInput Input) : SV_TARGET
         {
             Color *= 0.2f;
         }
+        
+        Output.Color = float4(Color, 1.0f);
+        Output.Normal = float4(WorldNormal, 0.f);
+        Output.ObjectMask = ObjectMask;
 
-        return float4(Color, 1.0f);
+        return Output;
     }
     
     if (bVisualizeCascades != 0u)
@@ -1062,7 +1097,12 @@ float4 EvaluateSurfaceColor(FPSInput Input) : SV_TARGET
         }
 
         float3 Color = BaseColor * (0.35f + 0.65f * Shadow);
-        return float4(Color, 1.0f);
+        
+        Output.Color = float4(Color, 1.0f);
+        Output.Normal = float4(WorldNormal, 0.f);
+        Output.ObjectMask = ObjectMask;
+        
+        return Output;
     }
     
     float3 DiffuseLight;
@@ -1074,24 +1114,16 @@ float4 EvaluateSurfaceColor(FPSInput Input) : SV_TARGET
     float3 N = normalize(WorldNormal);
     float3 V = normalize(CameraPosition - Input.WorldPosition);
     
-#if USE_NORMAL_MAP
     ComputeTiledLighting(N, Normal, Input.WorldPosition, V, Shininess, Input.Position.xy, DiffuseLight, SpecularLight);
-#else
-    ComputeTiledLighting(N, Input.WorldPosition, V, Shininess, Input.Position.xy, DiffuseLight, SpecularLight);
-#endif
     
 #endif
     FinalColor = float4(Ka * AmbientLight.Color + Kd * DiffuseLight + Ks * SpecularLight, Alpha);
 #endif
-    return FinalColor;
-}
-
-// 표면 색상과 데칼 수신 데이터의 동시 출력
-FPSOutput mainPS(FPSInput Input)
-{
-    FPSOutput Output;
-    Output.SceneColor = EvaluateSurfaceColor(Input);
-    Output.NormalReceiver = float4(normalize(Input.Normal), Input.ReceivesDecals != 0u ? 1.0f : 0.0f);
+    
+    Output.Color = FinalColor;
+    Output.Normal = float4(normalize(WorldNormal), 0.f);
+    Output.ObjectMask = ObjectMask;
+    
     return Output;
 }
 #endif

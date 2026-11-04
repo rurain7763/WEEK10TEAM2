@@ -203,9 +203,10 @@ namespace
 		return isChanged;
 	}
 
-	void DrawTextureSlot(UMaterial** MaterialPtr, int32 SlotIndex)
+	bool DrawTextureSlot(UMaterial** MaterialPtr, int32 SlotIndex)
 	{
 		const float ThumbnailSize = 64.0f;
+		bool bChaged = false;
 
 		UMaterial* Material = *MaterialPtr;
 		UTexture2D* Texture = nullptr;
@@ -258,6 +259,8 @@ namespace
 
 					Material->Textures[SlotIndex] = DroppedTexture;
 					Texture = DroppedTexture;
+
+					bChaged = true;
 				}
 			}
 			ImGui::EndDragDropTarget();
@@ -279,6 +282,58 @@ namespace
 		ImGui::EndGroup();
 
 		ImGui::PopID();
+		return bChaged;
+	}
+
+	bool DrawTextureProperty(UTexture2D** TexturePtr)
+	{
+		ImGui::PushID(TexturePtr);
+		bool bChanged = false;
+		UTexture2D* Texture = *TexturePtr;
+		const ImVec2 ThumbnailSize(64.0f, 64.0f);
+
+		if (Texture && Texture->GetResource())
+		{
+			ImGui::Image((ImTextureID)Texture->GetResource()->GetRawSRV(), ThumbnailSize);
+		}
+		else
+		{
+			ImGui::Button("Empty##Texture", ThumbnailSize);
+		}
+
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::Texture))
+			{
+				if (Payload->DataSize == sizeof(UTexture2D*))
+				{
+					UTexture2D* DroppedTexture = *static_cast<UTexture2D* const*>(Payload->Data);
+					if (*TexturePtr != DroppedTexture)
+					{
+						*TexturePtr = DroppedTexture;
+						bChanged = true;
+					}
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
+
+		Texture = *TexturePtr;
+		if (Texture)
+		{
+			ImGui::TextWrapped("%s", Texture->GetPath().c_str());
+			if (ImGui::SmallButton("Clear##Texture"))
+			{
+				*TexturePtr = nullptr;
+				bChanged = true;
+			}
+		}
+		else
+		{
+			ImGui::TextDisabled("Drag a texture from the Content Drawer");
+		}
+		ImGui::PopID();
+		return bChanged;
 	}
 
 	FString GetAssetDisplayName(const FString& Path)
@@ -291,10 +346,10 @@ namespace
 		return AssetPath.stem().string();
 	}
 
-	void DrawFontSlot(UObject* Owner, UFont** FontPtr)
+	bool DrawFontSlot(UObject* Owner, UFont** FontPtr)
 	{
 		UFont* Current = *FontPtr;
-
+		bool bChanged = false;
 		FString CurrentPath = Current ? Current->GetPath() : "";
 		FString CurrentFileName = Current ? GetAssetDisplayName(CurrentPath) : "None";
 
@@ -326,9 +381,12 @@ namespace
 
 					// 메모리를 직접 바꾸지 않고 SetFont를 거친다
 					if (UTextRenderComponent* TextComponent = Cast<UTextRenderComponent>(Owner))
+					{
 						TextComponent->SetFont(*Itr);
+					}
 					else
 						*FontPtr = *Itr;
+					bChanged = true;
 				}
 				ImGui::PopID();
 				if (bSelected)
@@ -336,12 +394,13 @@ namespace
 			}
 			ImGui::EndCombo();
 		}
+		return bChanged;
 	}
 
-	void DrawMeshSlot(UObject* Owner, UStaticMesh** StaticMeshPtr)
+	bool DrawMeshSlot(UObject* Owner, UStaticMesh** StaticMeshPtr)
 	{
 		UStaticMesh* Current = *StaticMeshPtr;
-
+		bool bChanged = false;
 		FString CurrentPath = Current ? Current->GetPath() : "";
 		FString CurrentFileName = Current ? GetAssetDisplayName(CurrentPath) : "None";
 
@@ -391,6 +450,7 @@ namespace
 						MeshComponent->SetStaticMesh(Item.Mesh);
 					else
 						*StaticMeshPtr = Item.Mesh;
+					bChanged = true;
 				}
 				ImGui::PopID();
 				if (bSelected)
@@ -398,13 +458,17 @@ namespace
 			}
 			ImGui::EndCombo();
 		}
+		return bChanged;
+
 	}
 
-	void DrawSkeletalMeshSlot(UObject* Owner, USkeletalMesh** MeshPtr)
+	bool DrawSkeletalMeshSlot(UObject* Owner, USkeletalMesh** MeshPtr)
 	{
 		USkeletalMesh* Current = *MeshPtr;
+		// 만일 리소스 핫리로드를 구현해서, 리스트를 바꿔야하면 해당 로직 후 아래 bChaged=true;
+		bool bChanged = false;
 		const FString Preview = Current ? GetAssetDisplayName(Current->GetPath()) : "None";
-		if (!ImGui::BeginCombo("##SkeletalMesh", Preview.c_str())) return;
+		if (!ImGui::BeginCombo("##SkeletalMesh", Preview.c_str())) return false;
 
 		auto SelectMesh = [&](USkeletalMesh* Mesh)
 		{
@@ -412,6 +476,7 @@ namespace
 				Component->SetSkeletalMesh(Mesh);
 			else
 				*MeshPtr = Mesh;
+			bChanged = true;
 		};
 		if (ImGui::Selectable("None", Current == nullptr)) SelectMesh(nullptr);
 
@@ -432,6 +497,7 @@ namespace
 			ImGui::PopID();
 		}
 		ImGui::EndCombo();
+		return bChanged;
 	}
 
 	bool DrawSequenceSlot(UObject* Owner, ULevelSequence** SequencePtr)
@@ -1022,19 +1088,24 @@ namespace
 
 			if (Property.Class == UMaterial::StaticClass())
 			{
-				DrawTextureSlot(reinterpret_cast<UMaterial**>(ObjPtr), 0);
+				bChanged = DrawTextureSlot(reinterpret_cast<UMaterial**>(ObjPtr), 0);
+				
+			}
+			else if (Property.Class == UTexture2D::StaticClass())
+			{
+				bChanged = DrawTextureProperty(reinterpret_cast<UTexture2D**>(ObjPtr));
 			}
 			else if (Property.Class == UFont::StaticClass())
 			{
-				DrawFontSlot(Object, reinterpret_cast<UFont**>(ObjPtr));
+				bChanged = DrawFontSlot(Object, reinterpret_cast<UFont**>(ObjPtr));
 			}
 			else if (Property.Class == UStaticMesh::StaticClass())
 			{
-				DrawMeshSlot(Object, reinterpret_cast<UStaticMesh**>(ObjPtr));
+				bChanged = DrawMeshSlot(Object, reinterpret_cast<UStaticMesh**>(ObjPtr));
 			}
 			else if (Property.Class == USkeletalMesh::StaticClass())
 			{
-				DrawSkeletalMeshSlot(Object, reinterpret_cast<USkeletalMesh**>(ObjPtr));
+				bChanged = DrawSkeletalMeshSlot(Object, reinterpret_cast<USkeletalMesh**>(ObjPtr));
 			}
 			else if (Property.Class == ULevelSequence::StaticClass())
 			{
@@ -1370,6 +1441,21 @@ namespace
 		Material = Decal->GetDecalMaterial();
 		if (!Material)	return;
 
+		// 실제 변경 시 편집용 인스턴스를 확보하는 채널 설정
+		bool bAffectBaseColor = Material->bAffectBaseColor;
+		if (ImGui::Checkbox("Affect Base Color", &bAffectBaseColor))
+		{
+			Material = GetEditableDecalMaterial(Decal);
+			Material->bAffectBaseColor = bAffectBaseColor;
+		}
+
+		bool bAffectNormal = Material->bAffectNormal;
+		if (ImGui::Checkbox("Affect Normal", &bAffectNormal))
+		{
+			Material = GetEditableDecalMaterial(Decal);
+			Material->bAffectNormal = bAffectNormal;
+		}
+
 		// 기존 텍스처 슬롯의 썸네일 및 드래그 앤 드롭 재사용
 		ImGui::TextUnformatted("Albedo");
 		DrawTextureSlot(&Material, 0);
@@ -1388,20 +1474,20 @@ namespace
 			Material->BaseColor = BaseColor;
 		}
 
-		FLinearColor SpecularColor = Material->SpecularColor;
-		if (ColorEditLinear("Specular Color", &SpecularColor.R, ImGuiColorEditFlags_NoAlpha))
-		{
-			Material = GetEditableDecalMaterial(Decal);
-			Material->SpecularColor = SpecularColor;
-		}
-
-		// 기존 메시 머티리얼과 동일한 반사 지수 편집
-		float Shininess = Material->Shininess;
-		if (ImGui::DragFloat("Shininess", &Shininess, 1.0f, 1.0f, 1024.0f))
-		{
-			Material = GetEditableDecalMaterial(Decal);
-			Material->Shininess = Shininess;
-		}
+		//FLinearColor SpecularColor = Material->SpecularColor;
+		//if (ColorEditLinear("Specular Color", &SpecularColor.R, ImGuiColorEditFlags_NoAlpha))
+		//{
+		//	Material = GetEditableDecalMaterial(Decal);
+		//	Material->SpecularColor = SpecularColor;
+		//}
+		//
+		//// 기존 메시 머티리얼과 동일한 반사 지수 편집
+		//float Shininess = Material->Shininess;
+		//if (ImGui::DragFloat("Shininess", &Shininess, 1.0f, 1.0f, 1024.0f))
+		//{
+		//	Material = GetEditableDecalMaterial(Decal);
+		//	Material->Shininess = Shininess;
+		//}
 
 		// 기존 머티리얼 속성을 이용한 노멀맵 방향 설정
 		bool bFlipNormalGreen = Material->bFlipNormalGreen;

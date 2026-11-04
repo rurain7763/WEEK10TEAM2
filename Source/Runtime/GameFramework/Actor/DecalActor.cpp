@@ -1,4 +1,3 @@
-#pragma once
 #include "EnginePCH.h"
 #include "GameFramework/Actor/DecalActor.h"
 #include "Component/BillboardComponent.h"

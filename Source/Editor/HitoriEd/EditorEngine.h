@@ -54,8 +54,8 @@ public:
 	// Active View의 입력과 Picking 결과만 Gizmo 및 선택 상태에 반영한다.
 	void UpdateGizmoAndPicking();
 	// View 하나의 씬을 그린다.
-	// 씬은 SceneRenderingInfo(Linear float)에 그리고, 인코딩한 결과와 에디터 표시는 ViewRenderingInfo(sRGB)에 그린다.
-	void RenderFrame(const FSceneView& SceneView, const FSceneRenderSettings& Settings, UWorld& ViewWorld, const FRenderingInfo& SceneRenderingInfo, const FRenderingInfo& ViewRenderingInfo, FTexture2D* FxaaTexture, FRenderQueue& InRenderQueue);
+	// 렌더 타깃 묶음의 Linear 씬 컬러 및 최종 표시용 컬러 사용
+	void RenderFrame(const FSceneView& SceneView, const FSceneRenderSettings& Settings, UWorld& ViewWorld, const FSceneRenderTargets& Targets, FRenderQueue& InRenderQueue);
 	// Viewport 하나를 자기 렌더 타깃에 그린다. 씬을 그린 뒤 오버레이(Grid·Gizmo·UUID)와 PIE UI를 얹는다.
 	// OverlayClient가 있으면 에디터 표시를 그리고, ViewGizmo는 대상이 이 월드에 있을 때만 그린다.
 	void RenderFrame(const FViewport& Viewport, UWorld& ViewWorld, const FSceneView& View, const FSceneRenderSettings& Settings,
@@ -130,6 +130,8 @@ private:
 	bool IsPlayingView(int32 ViewIndex) const { return PlayWorld && ViewIndex == PIEViewIndex && !bIsPaused; }
 
 	void HandleOnPIEWorldChanged(UWorld* OldWorld, UWorld* NewWorld);
+	// 액터 파괴 전 선택·드래그·아웃라이너 참조 정리
+	void HandleActorDestroyed(AActor* Actor);
 
 	// FEngineLoop 소유. OnInit에서 받아 둔다.
 	FWindow* MainWindow = nullptr;

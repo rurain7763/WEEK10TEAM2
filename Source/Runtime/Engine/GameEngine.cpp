@@ -136,14 +136,16 @@ void UGameEngine::Tick(float DeltaTime)
 		//RenderSettings.DamageEffectIntensity = 1.0f;
 		RenderSettings.DamageEffectIntensity = Player->GetDamageEffectIntensity();
 	}
-	SceneRenderer.Render(*World, SceneView, RenderSettings, SceneRenderTargets.SceneInfo, SceneRenderTargets.ViewInfo, SceneRenderTargets.FxaaTemp.get(), RenderQueue);
+	SceneRenderer.Render(*World, SceneView, RenderSettings, SceneRenderTargets, RenderQueue);
 
 	// ========== UI 렌더링 ===========
-	FRenderingInfo UIInfo = SceneRenderTargets.ViewInfo;
-	for (FRenderingDesc& Target : UIInfo.ColorRenderTargets)
-	{
-		Target.LoadOp = ERenderTargetLoadOp::Load;
-	}
+	FRenderingInfo UIInfo;
+	UIInfo.ViewportSetting.Width = SceneRenderTargets.Width;
+	UIInfo.ViewportSetting.Height = SceneRenderTargets.Height;
+	FRenderingDesc UIColor;
+	UIColor.Texture = SceneRenderTargets.ViewColor.get();
+	UIColor.LoadOp = ERenderTargetLoadOp::Load;
+	UIInfo.ColorRenderTargets.Add(UIColor);
 	UIInfo.DepthStencil.Texture = nullptr;
 
 	RenderCommand::BeginRenderPass(UIInfo);

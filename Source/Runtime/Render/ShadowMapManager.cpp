@@ -319,7 +319,6 @@ void FShadowMapManager::BindForShading()
     RenderCommand::BindSamplerState(2, ESamplerState::Comparison_Linear, EShaderBindFlagBits::Pixel);
 }
 
-
 bool FShadowMapManager::EnsureDirectionalShadowMap(uint32 InResolution)
 {
     if (DirectionalShadowTexture && DirectionalShadowDSV && DirectionalShadowSRV && DirectionalResolution == InResolution)

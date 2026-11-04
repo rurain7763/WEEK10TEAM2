@@ -11,6 +11,7 @@
 #include "RenderCommand.h"
 #include "RenderResourceManager.h"
 #include "ColorWorkflow.h"
+#include "Asset/ModelData.h"
 
 #include <algorithm>
 #include <chrono>
@@ -24,7 +25,6 @@ DECLARE_CYCLE_STAT("Draw Render Packets", STAT_DrawRenderPackets);
 DECLARE_CYCLE_STAT("Render Queue Sorting", STAT_RenderQueueSorting);
 DECLARE_CYCLE_STAT("Upload Per-Object CB", STAT_UploadPerObjectCB);
 DECLARE_CYCLE_STAT("Shadow Pass (Total)", STAT_Shadow);
-
 
 namespace
 {
@@ -55,6 +55,39 @@ bool FRenderer::Init()
 	LightingCB = RenderCommand::CreateConstantBuffer(sizeof(FLightingConstants));
 	FLightingConstants LightingConstant{};
 	RenderCommand::UpdateBufferData(LightingCB.get(), &LightingConstant);
+
+	FShaderProgramDesc SurfaceStaticSPDesc;
+	SurfaceStaticSPDesc.Path = "Resources/Shader/SurfaceShader.hlsl";
+	SurfaceStaticSPDesc.Defines = {
+		{ "USE_SKINNING", "0" }
+	};
+	SurfaceStaticSPDesc.InputLayout = {
+		{ "POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,    0, static_cast<UINT>(offsetof(FVertexPNCT, Position)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, static_cast<UINT>(offsetof(FVertexPNCT, Normal)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TANGENT",      0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(FVertexPNCT, Tangent)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "COLOR",        0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(FVertexPNCT, Color)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD",     0, DXGI_FORMAT_R32G32_FLOAT,       0, static_cast<UINT>(offsetof(FVertexPNCT, UV)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	};
+	SurfaceStaticPipeline.Shader = FRenderResourceManager::RegisterProgram("Surface_Static", SurfaceStaticSPDesc);
+
+	FShaderProgramDesc SurfaceSkinningSPDesc;
+	SurfaceSkinningSPDesc.Path = "Resources/Shader/SurfaceShader.hlsl";
+
+	SurfaceSkinningSPDesc.Defines = { 
+		{ "USE_SKINNING", "1" } 
+	};
+	SurfaceSkinningSPDesc.InputLayout = {
+		{ "POSITION",     0, DXGI_FORMAT_R32G32B32_FLOAT,    0, static_cast<UINT>(offsetof(FVertexPNCT, Position)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "NORMAL",       0, DXGI_FORMAT_R32G32B32_FLOAT,    0, static_cast<UINT>(offsetof(FVertexPNCT, Normal)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TANGENT",      0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(FVertexPNCT, Tangent)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "COLOR",        0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(FVertexPNCT, Color)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD",     0, DXGI_FORMAT_R32G32_FLOAT,       0, static_cast<UINT>(offsetof(FVertexPNCT, UV)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "BLENDINDICES", 0, DXGI_FORMAT_R32G32B32A32_SINT,  1, static_cast<UINT>(offsetof(FModelVertexInfluences, BoneIndices)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "BLENDWEIGHT",  0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, static_cast<UINT>(offsetof(FModelVertexInfluences, Weights)), D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "BONECOUNT",	  0, DXGI_FORMAT_R32_SINT,			 1, static_cast<UINT>(offsetof(FModelVertexInfluences, InfluenceCount)), D3D11_INPUT_PER_VERTEX_DATA, 0 }
+
+	};
+	SurfaceSkinningPipeline.Shader = FRenderResourceManager::RegisterProgram("Surface_Skinned", SurfaceSkinningSPDesc);
 
 	TileLightCulling.Init();
 	GPUOcclusion.Init();   // 실패해도 오클루전만 못 쓸 뿐 렌더링은 된다
@@ -110,7 +143,8 @@ void FRenderer::UploadPerObjectConstants()
 	for (uint32 Index = 0; Index < Count; ++Index)
 	{
 		FRenderPacket& P = RenderPackets[Index];
-		WriteObjectSlot(Dest, Index, GetPacketWorld(P), GetPacketNormalMatrix(P), P.Proxy && P.Proxy->ReceivesDecals());
+		const uint32 ObjectMask = P.Proxy ? P.Proxy->GetObjectMask() : 0u;
+		WriteObjectSlot(Dest, Index, GetPacketWorld(P), GetPacketNormalMatrix(P), ObjectMask);
 		P.Slot = Index;
 	}
 
@@ -121,20 +155,105 @@ void FRenderer::UploadPerObjectConstants()
 void FRenderer::RenderAll(FRenderQueue& InQueue, const FMatrix& ViewProjection, const FVector& CameraPosition)
 {
 	RenderQueueSorting(InQueue, ViewProjection, CameraPosition);
-	RenderOpaque(ViewProjection);
-	RenderTranslucent(ViewProjection);
+	RenderOpaque();
+	RenderTranslucent();
 }
 
-void FRenderer::RenderOpaque(const FMatrix& ViewProjection)
+void FRenderer::RenderSurface()
+{
+	SCOPE_CYCLE_COUNTER(STAT_DrawRenderPackets);
+	
+	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+
+	FPipelineState* LastPipelinePtr = nullptr;
+	for (const FStaticDrawGroup* Group : StaticGroups)
+	{
+		RenderCommand::BindVertexBuffers(Group->Geometry.VertexBuffers, Group->Geometry.VertexBufferCount);
+		RenderCommand::BindIndexBuffer(Group->Geometry.IndexBuffer);
+		 
+		for (const FStaticDrawItem& Item : Group->Items)
+		{
+			const bool bUseSkinning = Item.Proxy->IsUsingSkinning();
+			FPipelineState* Pipeline = bUseSkinning ? &SurfaceSkinningPipeline : &SurfaceStaticPipeline;
+
+			if (LastPipelinePtr != Pipeline)
+			{
+				RenderCommand::BindPipelineState(*Pipeline);
+				LastPipelinePtr = Pipeline;
+			}
+
+			if (bUsePerObjectSlots && Item.Slot != InvalidObjectSlot)
+			{
+				RenderCommand::BindConstantBufferRange(1, PerObjectSlotCB.get(), Item.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+			}
+			else
+			{
+				RenderCommand::BindConstantBuffer(1, PerObjectCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+				UpdatePerObjectConstants(Item.Proxy->GetLocalToWorld(), Item.Proxy->GetNormalMatrix(), Item.Proxy->GetObjectMask());
+			}
+
+			if (bUseSkinning)
+			{
+				ID3D11ShaderResourceView* BoneMatricesSRV = Item.Proxy->GetBoneMatricesSRV();
+				RenderCommand::GetContext()->VSSetShaderResources(0, 1, &BoneMatricesSRV);
+			}
+
+			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
+		}
+	}
+
+	for (uint32 Index = 0; Index < FirstTranslucentIndex; ++Index)
+	{
+		const FRenderPacket& Packet = RenderPackets[Index];
+		const bool bUseSkinning = Packet.Proxy && Packet.Proxy->IsUsingSkinning();
+		
+		FPipelineState* Pipeline = bUseSkinning ? &SurfaceSkinningPipeline : &SurfaceStaticPipeline;
+
+		if (LastPipelinePtr != Pipeline)
+		{
+			RenderCommand::BindPipelineState(*Pipeline);
+			LastPipelinePtr = Pipeline;
+		}
+
+		RenderCommand::BindVertexBuffers(Packet.Geometry.VertexBuffers, Packet.Geometry.VertexBufferCount);
+		RenderCommand::BindIndexBuffer(Packet.Geometry.IndexBuffer);
+
+		if (bUsePerObjectSlots && Packet.Slot != InvalidObjectSlot)
+		{
+			RenderCommand::BindConstantBufferRange(1, PerObjectSlotCB.get(), Packet.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+		}
+		else
+		{
+			RenderCommand::BindConstantBuffer(1, PerObjectCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+			UpdatePerObjectConstants(Packet);
+		}
+
+		if (bUseSkinning)
+		{
+			ID3D11ShaderResourceView* BoneMatricesSRV = Packet.Proxy->GetBoneMatricesSRV();
+			RenderCommand::GetContext()->VSSetShaderResources(0, 1, &BoneMatricesSRV);
+		}
+
+		RenderCommand::DrawIndexed(Packet.Geometry.IndexCount, Packet.Geometry.StartIndex);
+	}
+
+	RenderCommand::UnbindShaderResource(0, EShaderBindFlagBits::Vertex);
+
+	LastVertexBufferCount = 0;
+	LastIndexBuffer = nullptr;
+	LastMaterial = nullptr;
+}
+
+void FRenderer::RenderOpaque()
 {
 	DrawStaticGroups();
-	DrawPackets(0, FirstTranslucentIndex, ViewProjection);
+	DrawPackets(0, FirstTranslucentIndex);
 }
 
 // RenderOpaque가 남긴 반투명 패킷을 먼 것부터 그린다.
-void FRenderer::RenderTranslucent(const FMatrix& ViewProjection)
+void FRenderer::RenderTranslucent()
 {
-	DrawPackets(FirstTranslucentIndex, RenderPackets.Num(), ViewProjection);
+	DrawPackets(FirstTranslucentIndex, RenderPackets.Num());
 	RenderPackets.Reset();
 	FirstTranslucentIndex = 0;
 	StaticGroups.clear();   // 묶음 메모리는 World 것이므로 이번 프레임이 끝나면 놓는다
@@ -168,8 +287,8 @@ void FRenderer::DrawStaticGroups()
 			const bool bUseSkinning = Item.Proxy ? Item.Proxy->IsUsingSkinning() : false;
 			const int8 CurrentRS = bReceiveShadow ? 1 : 0;
 			const int8 CurrentSkinning = bUseSkinning ? 1 : 0;
-			const bool bMaterialChanged = Group->Material != BoundMaterial;
-			const bool bShadowChanged = CurrentRS != LastReceiveShadow;
+			const bool bMaterialChanged = (Group->Material != BoundMaterial);
+			const bool bShadowChanged = (CurrentRS != LastReceiveShadow);
 			const bool bSkinningChanged = CurrentSkinning != LastUseSkinning;
 
 			if (bMaterialChanged || bShadowChanged || bSkinningChanged)
@@ -188,14 +307,19 @@ void FRenderer::DrawStaticGroups()
 
 			if (bUsePerObjectSlots && Item.Slot != InvalidObjectSlot)
 			{
-				RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), Item.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex);
+				RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), Item.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 			}
 			else
 			{
-				RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
-				UpdatePerObjectConstants(Item.Proxy->GetLocalToWorld(), Item.Proxy->GetNormalMatrix(), Item.Proxy->ReceivesDecals());
+				RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+				UpdatePerObjectConstants(Item.Proxy->GetLocalToWorld(), Item.Proxy->GetNormalMatrix(), Item.Proxy->GetObjectMask());
 			}
-			if (Item.Proxy) Item.Proxy->BindSRVs();
+
+			if (Item.Proxy)
+			{
+				Item.Proxy->BindSRVs();
+			}
+
 			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
 		}
 	}
@@ -211,6 +335,7 @@ void FRenderer::RenderQueueSorting(FRenderQueue& InQueue, const FMatrix& ViewPro
 	FViewConstants ViewConstants;
 	ViewConstants.ViewProjection = ViewProjection;
 	ViewConstants.CameraPosition = CameraPosition;
+
 	RenderCommand::UpdateBufferData(ViewCB.get(), &ViewConstants);
 	{
 		SCOPE_CYCLE_COUNTER(STAT_RenderQueueSorting);
@@ -291,7 +416,7 @@ void FRenderer::RenderQueueSorting(FRenderQueue& InQueue, const FMatrix& ViewPro
 }
 
 // 정렬된 패킷 중 [Begin, End) 범위를 View 행렬과 Section 범위로 그린다.
-void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProjection)
+void FRenderer::DrawPackets(uint32 Begin, uint32 End)
 {
 	SCOPE_CYCLE_COUNTER(STAT_DrawRenderPackets);
 
@@ -324,7 +449,6 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 		const bool bUseSkinning = RenderPacket.Proxy ? RenderPacket.Proxy->IsUsingSkinning() : false;
 		const int8 CurrentRS = bReceiveShadow ? 1 : 0;
 		const int8 CurrentSkinning = bUseSkinning ? 1 : 0;
-
 		if (RenderPacket.Material != LastMaterial || CurrentRS != LastReceiveShadow || CurrentSkinning != LastUseSkinning)
 		{
 			BindMaterial(RenderPacket.Material, bReceiveShadow, bUseSkinning);
@@ -337,12 +461,12 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 
 		if (bUsePerObjectSlots && RenderPacket.Slot != InvalidObjectSlot)
 		{
-			RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), RenderPacket.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex);
+			RenderCommand::BindConstantBufferRange(2, PerObjectSlotCB.get(), RenderPacket.Slot * PerObjectSlotConstants, PerObjectSlotConstants, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 		}
 		else
 		{
-			RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
-			UpdatePerObjectConstants(RenderPacket, ViewProjection);
+			RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+			UpdatePerObjectConstants(RenderPacket);
 		}
 
 		if (RenderPacket.Proxy)
@@ -358,7 +482,7 @@ void FRenderer::DrawPackets(uint32 Begin, uint32 End, const FMatrix& ViewProject
 	}
 }
 
-FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewProjection)
+FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion()
 {
 	FOcclusionMeasureResult Result;
 
@@ -466,12 +590,17 @@ FOcclusionMeasureResult FRenderer::MeasureOpaqueOcclusion(const FMatrix& ViewPro
 		else
 		{
 			RenderCommand::BindConstantBuffer(2, PerObjectCB.get(), EShaderBindFlagBits::Vertex);
-			UpdatePerObjectConstants(*Draw.World, MakeNormalMatrix(*Draw.World));   // 측정 전용 폴백이라 매번 계산한다
+			// 패킷이 없는 스태틱 묶음도 포함하는 측정용 행렬 폴백
+			const uint32 ObjectMask = Draw.Proxy ? Draw.Proxy->GetObjectMask() : 0u;
+			UpdatePerObjectConstants(*Draw.World, MakeNormalMatrix(*Draw.World), ObjectMask);
 		}
 
 		ID3D11Query* Query = OcclusionQueries[Index].Get();
 		Context->Begin(Query);
-		if (Draw.Proxy) Draw.Proxy->BindSRVs();
+		if (Draw.Proxy)
+		{
+			Draw.Proxy->BindSRVs();
+		}
 		RenderCommand::DrawIndexed(Draw.IndexCount, Draw.StartIndex);
 		Context->End(Query);
 
@@ -655,22 +784,19 @@ void FRenderer::UpdateMaterialParams(const FRenderPacket& RenderPacket)
 }
 
 // b0 MVP 채우고 꽂기
-void FRenderer::UpdatePerObjectConstants(const FRenderPacket& RenderPacket, const FMatrix& ViewProjection)
+void FRenderer::UpdatePerObjectConstants(const FRenderPacket& RenderPacket)
 {
-	// rp.Transform 과 Camera VP 행렬 곱
-	// 행렬곱의 결과 (MVP Matrix) Constant Buffer 업데이트 필요
-
-	UpdatePerObjectConstants(GetPacketWorld(RenderPacket), GetPacketNormalMatrix(RenderPacket),
-		RenderPacket.Proxy && RenderPacket.Proxy->ReceivesDecals());
+	// 빌보드·파티클처럼 Proxy 없이 제출된 패킷은 수신 플래그를 기록하지 않는다.
+	const uint32 ObjectMask = RenderPacket.Proxy ? RenderPacket.Proxy->GetObjectMask() : 0u;
+	UpdatePerObjectConstants(GetPacketWorld(RenderPacket), GetPacketNormalMatrix(RenderPacket), ObjectMask);
 }
 
-void FRenderer::UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix,bool bReceivesDecals)
+void FRenderer::UpdatePerObjectConstants(const FMatrix& World, const FMatrix& NormalMatrix, uint32 ObjectMask)
 {
-	const FPerObjectConstants Constants{
-		.World = World,
-		.NormalMatrix = NormalMatrix,
-		.ReceivesDecals = bReceivesDecals ? 1u : 0u,
-	};
+	FPerObjectConstants Constants{};
+	Constants.World = World;
+	Constants.NormalMatrix = NormalMatrix;
+	Constants.ObjectMask = ObjectMask;
 
 	RenderCommand::UpdateBufferData(PerObjectCB.get(), &Constants);
 }
@@ -755,7 +881,7 @@ void FRenderer::RenderShadowPass(
 				continue;
 			}
 
-			UpdatePerObjectConstants(Proxy->GetLocalToWorld(), Proxy->GetNormalMatrix());
+			UpdatePerObjectConstants(Proxy->GetLocalToWorld(), Proxy->GetNormalMatrix(), Proxy->GetObjectMask());
 			RenderCommand::BindVertexBuffers(LOD.VertexBuffers, LOD.VertexBufferCount);
 			RenderCommand::BindIndexBuffer(LOD.IndexBuffer);
 
@@ -835,26 +961,16 @@ void FRenderer::RenderShadowPass(
 		ShadowStats.NumCachedShadowMaps = ShadowInfos.Num();
 	}
 
-	
-
 	int64 TotalBytes = (int64)ShadowMapManager.GetAtlasResolution() * ShadowMapManager.GetAtlasResolution() * 4 * ShadowMapManager.GetNumAtlas();
 	if (ShadowMapManager.GetDirectionalShadowSRV() != nullptr)
 	{
 		TotalBytes += (int64)ShadowMapManager.GetDirectionalResolution() * ShadowMapManager.GetDirectionalResolution() * 4;
 	}
-	ShadowStats.ShadowMapMemoryBytes = TotalBytes;
 
+	ShadowStats.ShadowMapMemoryBytes = TotalBytes;
 }
 
 void FRenderer::BindShadowForShading()
 {
-	ShadowMapManager.BindForShading();
-}
-
-void FRenderer::BindSceneLighting()
-{
-	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
-	RenderCommand::BindConstantBuffer(3, LightingCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
-	TileLightCulling.BindForShading(LocalLight);
 	ShadowMapManager.BindForShading();
 }

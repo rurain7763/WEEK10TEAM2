@@ -69,6 +69,7 @@ FSkeletalMeshPreviewTab::~FSkeletalMeshPreviewTab()
 
 }
 
+// 포즈 저장 상태 및 공용 스켈레탈 메시 표시 설정 편집
 void FSkeletalMeshPreviewTab::DrawToolbar()
 {
 	ImGui::BeginDisabled(PoseSavePath.empty() || BoneGizmo.IsUsing());
@@ -100,6 +101,7 @@ void FSkeletalMeshPreviewTab::DrawToolbar()
 	}
 }
 
+// 포즈 저장 파일 경로 선택
 void FSkeletalMeshPreviewTab::SelectPosePath()
 {
 	std::wstring FilePath(32768, L'\0');
@@ -130,6 +132,7 @@ void FSkeletalMeshPreviewTab::SelectPosePath()
 	}
 }
 
+// 편집 포즈 저장 및 동일 메시 컴포넌트의 기본 포즈 갱신
 void FSkeletalMeshPreviewTab::SavePose()
 {
 	USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
@@ -256,8 +259,11 @@ void FSkeletalMeshPreviewTab::UpdateBoneGizmo(const bool bInputEnabled)
 		FInputSystem::IsMouseDown(EMouseButton::Left), Viewport->GetCameraLocation(), Viewport->IsOrthographic());
 
 	const FMatrix TargetWorld = GizmoRoot->GetWorldMatrix();
-	if (!BoneGizmo.IsUsing() || TargetWorld == PreviousTargetWorld)
+	//|| TargetWorld == PreviousTargetWorld
+	if (!BoneGizmo.IsUsing())
+	{
 		return;
+	}
 
 	// Gizmo가 돌린 대상의 월드 행렬을 컴포넌트 기준으로 되돌려 본 포즈에 넣는다. 행 벡터 규약이라 역행렬을 오른쪽에 곱한다
 	USkeletalMeshComponent* MeshComponent = MeshActor->GetSkeletalMeshComponent();

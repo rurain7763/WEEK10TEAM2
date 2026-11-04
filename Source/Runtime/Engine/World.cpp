@@ -398,7 +398,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 					if (SlotDest)
 					{
 						// 칸 VisibleIndex는 이 반복만 쓴다 → 스레드끼리 겹치지 않음
-						WriteObjectSlot(SlotDest, VisibleIndex, Proxy->GetLocalToWorld(), Proxy->GetNormalMatrix(), Proxy->ReceivesDecals());
+						WriteObjectSlot(SlotDest, VisibleIndex, Proxy->GetLocalToWorld(), Proxy->GetNormalMatrix(), Proxy->GetObjectMask());
 						Slot = VisibleIndex;
 					}
 
@@ -485,13 +485,13 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FLODViewContex
 					FRenderPacket& Packet = RenderQueue[p];
 					if (Packet.Proxy)
 					{
-						WriteObjectSlot(SlotDest, NextExtraSlot, Packet.Proxy->GetLocalToWorld(), Packet.Proxy->GetNormalMatrix(), Packet.Proxy->ReceivesDecals());
+						WriteObjectSlot(SlotDest, NextExtraSlot, Packet.Proxy->GetLocalToWorld(), Packet.Proxy->GetNormalMatrix(), Packet.Proxy->GetObjectMask());
 					}
 					else
 					{
 						// 프록시 없는 패킷(빌보드 등)은 캐시가 없으므로 여기서 계산한다.
 						const FMatrix& Model = Packet.Model ? *Packet.Model : FMatrix::Identity;
-						WriteObjectSlot(SlotDest, NextExtraSlot, Model, MakeNormalMatrix(Model), false);
+						WriteObjectSlot(SlotDest, NextExtraSlot, Model, MakeNormalMatrix(Model), 0u);
 					}
 					Packet.Slot = NextExtraSlot++;
 				}
@@ -638,6 +638,8 @@ bool UWorld::DestroyActor(AActor* Actor)
 	}
 
 	// 4. Actor 삭제
+	// Actor destruction notification
+	OnActorDestroyed.Broadcast(Actor);
 	delete Actor;
 
 	HTR_LOG(Info, "Destroy Actor : {} UUID {}", ActorName, ActorUUID);

@@ -13,6 +13,13 @@ class UStaticMesh;
 class USkeletalMesh;
 class UMaterial;
 
+enum EObjectMaskBit
+{
+    OM_CastShadow = 0x1,
+    OM_ReceiveShadow = 0x2,
+    OM_ReceiveDecals = 0x4
+};
+
 class FPrimitiveSceneProxy
 {
 public:
@@ -23,7 +30,9 @@ public:
     virtual void UpdateRenderState();
     void OnMeshRenderDataChanged();
     virtual void OnMeshDestroyed();
+    // 표면 셰이더의 프록시별 자원 연결
     virtual void BindSRVs() const {}
+    virtual ID3D11ShaderResourceView* GetBoneMatricesSRV() const { return nullptr; }
 
     UPrimitiveComponent* GetComponent() const { return Component; }
 
@@ -38,6 +47,7 @@ public:
     bool IsReceiveShadow() const { return bReceiveShadow; }
     bool ReceivesDecals() const{ return bReceivesDecals; }
     bool IsHiddenInGame() const { return bHiddenInGame; }
+    uint32 GetObjectMask() const { return ObjectMask; }
 
     uint8 GetLODCount() const { return RenderState ? RenderState->LODCount : 1; }
     const FMeshRenderState* GetRenderState() const { return RenderState.get(); }
@@ -72,6 +82,7 @@ private:
     bool bReceiveShadow = true;
     bool bReceivesDecals = true;
     bool bHiddenInGame = false;
+    uint32 ObjectMask = 0;
 };
 
 class FStaticMeshSceneProxy : public FPrimitiveSceneProxy
@@ -102,7 +113,7 @@ public:
     void OnMeshDestroyed() override;
     bool UpdateBoneMatrixBuffer();
 
-    ID3D11ShaderResourceView* GetBoneMatrixSRV()
+    ID3D11ShaderResourceView* GetBoneMatricesSRV() const override
     {
         return BoneMatrixSRV.Get();
     }
