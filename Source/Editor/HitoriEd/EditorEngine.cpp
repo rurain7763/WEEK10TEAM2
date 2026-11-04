@@ -511,7 +511,7 @@ void UEditorEngine::RenderViewports()
 		if (&ViewWorld == CapturedWorld)
 			return;
 		SCOPE_CYCLE_COUNTER(STAT_CaptureWorld);
-		RenderCollector.CaptureWorld(ViewWorld);
+		RenderCollector.CaptureWorld(ViewWorld, SceneRenderSettings.bDrawSkeletalMeshes);
 		CapturedWorld = &ViewWorld;
 	};
 
@@ -686,6 +686,7 @@ FSceneRenderSettings UEditorEngine::MakeSceneRenderSettings() const
 
 	return {
 		.bDrawPrimitives = Settings.bDrawPrimitives,
+		.bDrawSkeletalMeshes = Settings.bDrawSkeletalMeshes,
 		.bDrawDecals = Settings.bDrawDecals,
 		.bDrawShadows = Settings.bDrawShadows,
 		.ShadowFilter = Filter,
@@ -724,7 +725,7 @@ void UEditorEngine::OpenSkeletalMeshViewer(USkeletalMesh* SkeletalMesh)
 	}
 
 
-	EditorUI->AddTab<FSkeletalMeshPreviewTab>(SkeletalMesh)->RequestFocus();
+	EditorUI->AddTab<FSkeletalMeshPreviewTab>(SkeletalMesh, SettingsPanel->GetMutableSettings().bDrawSkeletalMeshes)->RequestFocus();
 }
 
 FWorldContext& UEditorEngine::GetEditorWorldContext()

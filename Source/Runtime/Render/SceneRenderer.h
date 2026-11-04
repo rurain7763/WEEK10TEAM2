@@ -36,6 +36,7 @@ struct FSceneView
 struct FSceneRenderSettings
 {
 	bool bDrawPrimitives = true;
+	bool bDrawSkeletalMeshes = true;
 	bool bDrawDecals = true;
 	bool bDrawShadows = true;
 	FShadowFilterSettings ShadowFilter;
@@ -97,4 +98,5 @@ private:
 	const UWorld* ShadowAtlasWorld = nullptr;
 	TArray<FShadowInfo> ShadowAtlasInfos;
 	bool bShadowAtlasRenderedThisFrame = false;
+	bool bShadowAtlasDrawSkeletalMeshes = true;
 };

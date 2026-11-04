@@ -31,6 +31,7 @@ public:
 	virtual UMaterial* GetDefaultMaterial(int32 SlotIndex) const override;
 
 	const TArray<FMatrix>& GetBoneMatrices() const;
+	const TArray<FMatrix>& GetLocalPose() const;
 
 	USkeletalMesh* GetSkeletalMesh();
 

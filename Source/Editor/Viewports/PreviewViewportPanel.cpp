@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <cmath>
 
-FPreviewViewportPanel::FPreviewViewportPanel(UWorld* InWorld, FString InPanelName)
-	: World(InWorld), PanelName(std::move(InPanelName))
+FPreviewViewportPanel::FPreviewViewportPanel(UWorld* InWorld, FString InPanelName, std::function<void()> InDrawToolbar)
+	: World(InWorld), PanelName(std::move(InPanelName)), DrawToolbar(std::move(InDrawToolbar))
 {
 }
 
@@ -71,7 +71,8 @@ void FPreviewViewportPanel::OnRender()
 		return;
 	}
 
-	bHovered = ImGui::IsWindowHovered();
+	DrawToolbar();
+	bHovered = false;
 	const ImVec2 Avail = ImGui::GetContentRegionAvail();
 	RequestedSize = { std::max(0.0f, std::floor(Avail.x)), std::max(0.0f, std::floor(Avail.y)) };
 
@@ -81,6 +82,7 @@ void FPreviewViewportPanel::OnRender()
 		ImGui::Image((ImTextureID)Viewport->GetColorTarget()->GetSRV(), { RequestedSize.X, RequestedSize.Y });
 		ImageMin = ImGui::GetItemRectMin();
 		ImageSize = ImGui::GetItemRectSize();
+		bHovered = ImGui::IsItemHovered();
 	}
 	ImGui::End();
 }

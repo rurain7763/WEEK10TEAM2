@@ -18,7 +18,7 @@ class FViewportRenderCollector
 {
 public:
     // Tick 뒤 현재 World의 ID·경계만 캡처한다. Mesh·삼각형은 복사하지 않는다.
-    void CaptureWorld(UWorld& World);
+    void CaptureWorld(UWorld& World, bool bDrawSkeletalMeshes);
     // 마지막으로 캡처한 World를 Viewport 카메라로 컬링해 렌더 큐를 구성한다. Viewport는 활성이어야 한다.
     void BuildRenderQueue(const FViewport& Viewport, FRenderQueue& OutQueue);
     // 마지막 BuildRenderQueue에서 절두체를 통과한 오브젝트 수를 반환한다.

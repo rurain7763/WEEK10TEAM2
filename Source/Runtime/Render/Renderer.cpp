@@ -820,7 +820,8 @@ void FRenderer::RenderShadowPass(
 	FLightSceneProxy* PreviewShadowMapProxy,
 	FShadowStats& ShadowStats,
 	bool bVisualizeCascades,
-	bool bCacheHit)
+	bool bCacheHit,
+	bool bDrawSkeletalMeshes)
 {
 	SCOPE_CYCLE_COUNTER(STAT_Shadow);
 
@@ -864,7 +865,7 @@ void FRenderer::RenderShadowPass(
 	auto DrawCasters = [&]() {
 		for (FPrimitiveSceneProxy* Proxy : Casters)
 		{
-			if (!Proxy || !Proxy->IsVisible() || !Proxy->GetRenderState())
+			if (!Proxy || !Proxy->IsVisible() || !Proxy->GetRenderState() || (!bDrawSkeletalMeshes && Proxy->IsUsingSkinning()))
 			{
 				continue;
 			}

@@ -4,6 +4,7 @@
 #include "PreviewScene.h"
 #include "Render/SkeletalMesh.h"
 
+#include <filesystem>
 
 class ASkeletalMeshActor;
 class AActor;
@@ -15,7 +16,7 @@ class FViewportsPanel;
 class FSkeletalMeshPreviewTab : public FEditorTab
 {
 public:
-	explicit FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh);
+	explicit FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh, bool& InDrawSkeletalMeshes);
 	virtual ~FSkeletalMeshPreviewTab() override;
 	FSkeletalMeshPreviewTab(const FSkeletalMeshPreviewTab&) = delete;
 	FSkeletalMeshPreviewTab& operator=(const FSkeletalMeshPreviewTab&) = delete;
@@ -36,9 +37,17 @@ public:
 	UWorld* GetWorld() const override { return PreviewScene->GetWorld(); }
 	virtual const UObject* GetEditingAsset() const { return SkeletalMesh; };
 private:
+	void DrawToolbar();
+	void SelectPosePath();
+	void SavePose();
+
 	// 메시 바운드가 화면에 들어오도록 Preview 카메라를 놓는다
 	void FrameMesh();
 	bool bFramed = false;
+	bool bPoseDirty = false;
+	bool bPoseSaveFailed = false;
+	bool& bDrawSkeletalMeshes;
+	std::filesystem::path PoseSavePath;
 
 	FPreviewViewportPanel* ViewportPanel = nullptr;
 	const FGizmo* Gizmo = nullptr;

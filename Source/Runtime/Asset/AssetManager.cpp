@@ -551,6 +551,7 @@ void UAssetManager::LoadFbxModel(const FString& Path)
 	if (ModelData.IsSkeletal)
 	{
 		USkeleton* Skeleton = CreateSkeleton(ModelData);
+		Skeleton->LoadDefaultPose(Path);
 
 		USkeletalMesh* Mesh = CreateSkeletalMesh(ModelData);
 		Mesh->SetSkeleton(Skeleton);

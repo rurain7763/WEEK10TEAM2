@@ -7,12 +7,15 @@
 #include "Animation/Skeleton.h"
 #include "Input/InputSystem.h"
 #include "Camera/CameraTypes.h"
+#include "Core/PathUtils.h"
 #include "Editor/Viewports/EditorViewportClient.h"
 #include "Editor/Viewports/ViewportCameraMath.h"
 #include "SkeletonTreePanel.h"
+#include "UObject/UObjectIterator.h"
 
 #include <algorithm>
 #include <cmath>
+#include <commdlg.h>
 
 namespace
 {
@@ -32,11 +35,16 @@ namespace
 }
 
 
-FSkeletalMeshPreviewTab::FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh) : FEditorTab(MakeSkeletalMeshPreviewTabSettings()), SkeletalMesh(InSkeletalMesh)
+FSkeletalMeshPreviewTab::FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh, bool& InDrawSkeletalMeshes)
+	: FEditorTab(MakeSkeletalMeshPreviewTabSettings()), bDrawSkeletalMeshes(InDrawSkeletalMeshes), SkeletalMesh(InSkeletalMesh)
 {
 	PreviewScene = MakeUnique<FPreviewScene>();
 	MeshActor = Cast<ASkeletalMeshActor>(PreviewScene->GetWorld()->SpawnActor(ASkeletalMeshActor::StaticClass()));
 	MeshActor->GetSkeletalMeshComponent()->SetSkeletalMesh(SkeletalMesh);
+	if (const USkeleton* Skeleton = SkeletalMesh->GetSkeleton())
+	{
+		PoseSavePath = Skeleton->GetPosePath();
+	}
 
 	//TODO: 본을 선택했을때, 투명한 액터를 본위치로 이동시켜서 본을 선택한것처럼 보이게 한다.
 	BoneGizmoActor = GetWorld()->SpawnActor(AActor::StaticClass());
@@ -46,7 +54,10 @@ FSkeletalMeshPreviewTab::FSkeletalMeshPreviewTab(USkeletalMesh* InSkeletalMesh) 
 	SkeletonTreePanel = AddPanel<FSkeletonTreePanel>(SkeletalMesh, FString("Skeleton Tree##") + SkeletalMesh->GetPath());
 	SkeletonTreePanel->SetBoneSelectedCallback([this](int32 BoneIndex) { OnBoneSelected(BoneIndex); });
 
-	ViewportPanel = AddPanel<FPreviewViewportPanel>(GetWorld(), FString("Viewport##") + SkeletalMesh->GetPath());
+	ViewportPanel = AddPanel<FPreviewViewportPanel>(GetWorld(), FString("Viewport##") + SkeletalMesh->GetPath(), [this]()
+	{
+		DrawToolbar();
+	});
 }
 
 FSkeletalMeshPreviewTab::~FSkeletalMeshPreviewTab()
@@ -56,6 +67,94 @@ FSkeletalMeshPreviewTab::~FSkeletalMeshPreviewTab()
 	ViewportPanel = nullptr;
 	SkeletonTreePanel = nullptr;
 
+}
+
+// 포즈 저장 상태 및 공용 스켈레탈 메시 표시 설정 편집
+void FSkeletalMeshPreviewTab::DrawToolbar()
+{
+	ImGui::BeginDisabled(PoseSavePath.empty() || BoneGizmo.IsUsing());
+	const FString FileEntry = PathUtils::ToUtf8(PoseSavePath.filename()) + " ...###PoseFile";
+	if (ImGui::Button(FileEntry.c_str()))
+	{
+		SelectPosePath();
+	}
+	ImGui::SetItemTooltip("%s", PathUtils::ToUtf8(PoseSavePath).c_str());
+	ImGui::EndDisabled();
+
+	const USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
+	const bool bNeedsSave = bPoseDirty || (Skeleton && PoseSavePath != Skeleton->GetPosePath());
+	ImGui::SameLine();
+	ImGui::BeginDisabled(!bNeedsSave || PoseSavePath.empty() || BoneGizmo.IsUsing());
+	if (ImGui::Button("Save"))
+	{
+		SavePose();
+	}
+	ImGui::EndDisabled();
+
+	ImGui::SameLine();
+	ImGui::Checkbox("Skeletal Mesh", &bDrawSkeletalMeshes);
+
+	if (bNeedsSave)
+	{
+		ImGui::SameLine();
+		ImGui::TextDisabled("%s", bPoseSaveFailed ? "Pose save failed" : "Unsaved changes");
+	}
+}
+
+// 포즈 저장 파일 경로 선택
+void FSkeletalMeshPreviewTab::SelectPosePath()
+{
+	std::wstring FilePath(32768, L'\0');
+	const auto FileName = PoseSavePath.filename().wstring();
+	const auto InitialDirectory = PoseSavePath.parent_path().wstring();
+	FileName.copy(FilePath.data(), FilePath.size() - 1);
+
+	OPENFILENAMEW Dialog = {};
+	Dialog.lStructSize = sizeof(Dialog);
+	Dialog.hwndOwner = GetActiveWindow();
+	Dialog.lpstrFile = FilePath.data();
+	Dialog.nMaxFile = static_cast<DWORD>(FilePath.size());
+	Dialog.lpstrFilter = L"Pose Files (*.pose)\0*.pose\0";
+	Dialog.lpstrDefExt = L"pose";
+	Dialog.lpstrInitialDir = InitialDirectory.c_str();
+	Dialog.lpstrTitle = L"Choose Pose Save Location";
+	Dialog.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
+	if (GetSaveFileNameW(&Dialog))
+	{
+		const std::filesystem::path SelectedPath(FilePath.c_str());
+		if (_wcsicmp(SelectedPath.extension().c_str(), L".pose") != 0)
+		{
+			MessageBoxW(Dialog.hwndOwner, L"Choose a file with the .pose extension.", L"Pose Save Location", MB_OK | MB_ICONWARNING);
+			return;
+		}
+		PoseSavePath = SelectedPath;
+		bPoseSaveFailed = false;
+	}
+}
+
+// 편집 포즈 저장 및 동일 메시 컴포넌트의 기본 포즈 갱신
+void FSkeletalMeshPreviewTab::SavePose()
+{
+	USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
+	USkinnedMeshComponent* PreviewComponent = MeshActor->GetSkeletalMeshComponent();
+	if (!Skeleton || !Skeleton->SaveDefaultPose(PreviewComponent->GetLocalPose(), PoseSavePath))
+	{
+		bPoseSaveFailed = true;
+		HTR_LOG(Error, "Failed to save skeletal mesh pose: {}", SkeletalMesh->GetPath());
+		return;
+	}
+
+	bPoseDirty = false;
+	bPoseSaveFailed = false;
+	PoseSavePath = Skeleton->GetPosePath();
+	for (TObjectIterator<USkinnedMeshComponent> Component; Component; ++Component)
+	{
+		if (*Component != PreviewComponent && Component->GetSkeletalMesh() == SkeletalMesh)
+		{
+			Component->ResetPose();
+			Component->UpdateBoneMatrices();
+		}
+	}
 }
 
 void FSkeletalMeshPreviewTab::Tick(float DeltaTime)
@@ -153,17 +252,23 @@ void FSkeletalMeshPreviewTab::UpdateBoneGizmo(const bool bInputEnabled)
 
 	const FViewport* Viewport = ViewportPanel->GetViewport();
 	const FVector2 OutputSize = Viewport->GetOutputSize();
+	USceneComponent* GizmoRoot = BoneGizmoActor->GetRootComponent();
+	const FMatrix PreviousTargetWorld = GizmoRoot->GetWorldMatrix();
 	BoneGizmo.Update(Viewport->Deproject(MousePosition), MousePosition, Viewport->PrepareView().ViewProjection,
 		static_cast<int>(OutputSize.X), static_cast<int>(OutputSize.Y),
 		FInputSystem::IsMouseDown(EMouseButton::Left), Viewport->GetCameraLocation(), Viewport->IsOrthographic());
 
-	if (!BoneGizmo.IsUsing())
+	const FMatrix TargetWorld = GizmoRoot->GetWorldMatrix();
+	if (!BoneGizmo.IsUsing() || TargetWorld == PreviousTargetWorld)
+	{
 		return;
+	}
 
 	// Gizmo가 돌린 대상의 월드 행렬을 컴포넌트 기준으로 되돌려 본 포즈에 넣는다. 행 벡터 규약이라 역행렬을 오른쪽에 곱한다
 	USkeletalMeshComponent* MeshComponent = MeshActor->GetSkeletalMeshComponent();
-	const FMatrix TargetWorld = BoneGizmoActor->GetRootComponent()->GetWorldMatrix();
 	MeshComponent->SetBoneComponentMatrix(SelectedBone, TargetWorld * MeshComponent->GetWorldMatrix().Inverse());
+	bPoseDirty = true;
+	bPoseSaveFailed = false;
 }
 
 void FSkeletalMeshPreviewTab::CollectViews(TArray<FEditorTabView>& OutViews)
