@@ -80,6 +80,7 @@ public:
 	virtual bool IsOverlappingActor(const AActor* Other) const;
 
 protected:
+	virtual FString RemapLoadedComponentName(const FString& Name) const { return Name; }
 	virtual void OnDefaultSubobjectCreated(UObject* Subobject) override;
 
 	//TSet<TObjectPtr<UActorComponent>> OwnedComponents;

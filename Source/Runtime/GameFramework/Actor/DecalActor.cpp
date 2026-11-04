@@ -19,6 +19,13 @@ ADecalActor::ADecalActor()
     Billboard->SetTexture(ResourcePaths::DecalActorIcon);
 }
 
+FString ADecalActor::RemapLoadedComponentName(const FString& Name) const
+{
+    if (Name == "UDecalComponent") return "DecalComponent";
+    if (Name == "UBillboardComponent") return "DecalBillboard";
+    return Super::RemapLoadedComponentName(Name);
+}
+
 // 현재 소유 데칼 컴포넌트 조회
 UDecalComponent* ADecalActor::GetDecalComponent() const
 {

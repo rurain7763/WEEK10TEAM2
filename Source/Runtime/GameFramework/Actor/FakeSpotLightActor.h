@@ -16,6 +16,9 @@ public:
 	using Super::Serialize;
 	void Serialize(FStructuredArchive::FRecord Record) override;
 
+protected:
+	FString RemapLoadedComponentName(const FString& Name) const override;
+
 private:
 	void ResolveComponents();
 

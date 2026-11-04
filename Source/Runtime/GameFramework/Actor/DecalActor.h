@@ -16,4 +16,7 @@ public:
     ~ADecalActor() override = default;
     UDecalComponent* GetDecalComponent() const;
     UBillboardComponent* GetBillboardComponent() const;
+
+protected:
+    FString RemapLoadedComponentName(const FString& Name) const override;
 };

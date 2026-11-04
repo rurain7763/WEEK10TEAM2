@@ -14,7 +14,6 @@
 #include "Component/PrimitiveComponent.h"
 #include "Component/MovementComponent.h"
 #include "Camera/CameraTypes.h"
-#include "GameFramework/Actor/DecalActor.h"
 
 enum class EAttachmentRule;
 
@@ -229,6 +228,8 @@ void AActor::Serialize(FStructuredArchive::FRecord Record)
 
 		FString Name, ClassName;
 		ComponentRecord << SA_VALUE("Name", Name) << SA_VALUE("Class", ClassName) << SA_VALUE("Parent", ParentName);
+		Name = RemapLoadedComponentName(Name);
+		ParentName = RemapLoadedComponentName(ParentName);
 
 		UActorComponent* Component = FindComponentByName(FName(Name));
 		if (!Component)
@@ -274,7 +275,7 @@ void AActor::Serialize(FStructuredArchive::FRecord Record)
 		// 저장된 루트는 Parent가 비어 있어 Transform이 월드 기준이다.
 		// AddComponent가 붙여 둔 부모에서 상대값 그대로 떼어 내야 저장한 위치가 된다.
 		// 옛 루트는 아래 PendingAttachments에서 저장된 부모(새 루트) 밑으로 붙는다.
-		USceneComponent* SavedRoot = Cast<USceneComponent>(FindComponentByName(FName(RootName)));
+		USceneComponent* SavedRoot = Cast<USceneComponent>(FindComponentByName(FName(RemapLoadedComponentName(RootName))));
 		if (SavedRoot && SavedRoot != RootComponent)
 		{
 			SavedRoot->DetachFromParent(EAttachmentRule::KeepRelative);
@@ -604,18 +605,6 @@ UActorComponent* AActor::FindComponentByName(FName Name) const
 		}
 	}
 
-	// 데칼 액터의 이전 기본 컴포넌트 이름 호환
-	if (GetClass()->IsChildOf(ADecalActor::StaticClass()))
-	{
-		if (Name == FName("UDecalComponent"))
-		{
-			return FindComponentByName(FName("DecalComponent"));
-		}
-		if (Name == FName("UBillboardComponent"))
-		{
-			return FindComponentByName(FName("DecalBillboard"));
-		}
-	}
 	return nullptr;
 }
 

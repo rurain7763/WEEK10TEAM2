@@ -7,11 +7,17 @@
 
 AFakeSpotLightActor::AFakeSpotLightActor()
 {
+	USceneComponent* PreviousRoot = GetRootComponent();
 	DecalComponent = CreateDefaultSubobject<UDecalComponent>(UDecalComponent::StaticClass()->GetName());
 	SetRootComponent(DecalComponent);
+	DestroyComponent(PreviousRoot);
 
-	UMaterial* Material = DecalComponent->GetDecalMaterial();
-	Material->Textures[0] = UAssetManager::GetAssetByPath<UTexture2D>(ResourcePaths::FakeSpotLightImage);
+	if (UMaterial* DefaultMaterial = DecalComponent->GetDecalMaterial())
+	{
+		UMaterial* Material = UMaterial::CreateInstance(DefaultMaterial);
+		Material->Textures[0] = UAssetManager::Get().LoadTexture(ResourcePaths::FakeSpotLightImage);
+		DecalComponent->SetDecalMaterial(Material);
+	}
 
 	LightBeamBillboardComponent = CreateDefaultSubobject<UBillboardComponent>("LightBeamBillboard");
 	LightBeamBillboardComponent->SetupAttachment(DecalComponent);
@@ -28,6 +34,12 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 
 	PrimaryActorTick.bCanEverTick = true;
 	bTickInEditor = true;
+}
+
+FString AFakeSpotLightActor::RemapLoadedComponentName(const FString& Name) const
+{
+	if (Name == "LightVolumeBillboard") return "LightBeamBillboard";
+	return Super::RemapLoadedComponentName(Name);
 }
 
 void AFakeSpotLightActor::Serialize(FStructuredArchive::FRecord Record)
@@ -47,8 +59,16 @@ void AFakeSpotLightActor::ResolveComponents()
 		DecalComponent = Cast<UDecalComponent>(FindComponentByClass(UDecalComponent::StaticClass()));
 
 	LightBeamBillboardComponent = Cast<UBillboardComponent>(FindComponentByName(FName("LightBeamBillboard")));
+	UBillboardComponent* LegacyBeam = Cast<UBillboardComponent>(FindComponentByName(FName("LightVolumeBillboard")));
+	if (LegacyBeam && LightBeamBillboardComponent && LegacyBeam != LightBeamBillboardComponent)
+	{
+		// 이전 이름으로 로드된 빔은 이 액터에서만 이관한다.
+		// AActor의 일반 컴포넌트 조회에는 파생 클래스의 이름 규칙을 넣지 않는다.
+		LightBeamBillboardComponent->SetMaterial(0, LegacyBeam->GetMaterial(0));
+		DestroyComponent(LegacyBeam);
+	}
 	if (!LightBeamBillboardComponent)
-		LightBeamBillboardComponent = Cast<UBillboardComponent>(FindComponentByName(FName("LightVolumeBillboard")));
+		LightBeamBillboardComponent = LegacyBeam;
 	IconBillboardComponent = Cast<UBillboardComponent>(FindComponentByName(FName("IconBillboard")));
 
 	if (!DecalComponent)
