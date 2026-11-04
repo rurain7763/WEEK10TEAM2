@@ -6,6 +6,60 @@
 
 #include <algorithm>
 
+namespace
+{
+	// 관절 위치에 서로 수직인 원 세 개로 와이어 구를 그린다
+	void DrawJointSphere(FLineBatcher* LineBatcher, const FVector& Center, const float Radius, const FVector4& Color)
+	{
+		constexpr int32 SegmentCount = 12;
+		const FVector PlaneAxes[3][2] =
+		{
+			{ FVector::XAxisVector, FVector(0.0f, 1.0f, 0.0f) },
+			{ FVector::XAxisVector, FVector(0.0f, 0.0f, 1.0f) },
+			{ FVector(0.0f, 1.0f, 0.0f), FVector(0.0f, 0.0f, 1.0f) },
+		};
+
+		for (const auto& Axes : PlaneAxes)
+		{
+			FVector Prev = Center + Axes[0] * Radius;
+			for (int32 i = 1; i <= SegmentCount; i++)
+			{
+				const float Angle = 2.0f * PI * i / SegmentCount;
+				const FVector Next = Center + (Axes[0] * std::cos(Angle) + Axes[1] * std::sin(Angle)) * Radius;
+				LineBatcher->AddLine(Prev, Next, Color);
+				Prev = Next;
+			}
+		}
+	}
+
+	// 언리얼 에디터의 본처럼 부모 관절에서 자식 관절로 뻗는 팔면체를 그린다
+	void DrawBoneShape(FLineBatcher* LineBatcher, const FVector& Start, const FVector& End, const float MaxRadius, const FVector4& Color)
+	{
+		const FVector Delta = End - Start;
+		const float Length = Delta.Size();
+		if (Length < SMALL_NUMBER)
+			return;
+
+		// 뼈 방향과 가장 덜 평행한 축으로 단면의 두 축을 만든다
+		const FVector Dir = Delta / Length;
+		const FVector Helper = std::abs(Dir.Z) < 0.9f ? FVector(0.0f, 0.0f, 1.0f) : FVector::XAxisVector;
+		const FVector U = Dir.Cross(Helper).GetSafeNormal();
+		const FVector V = Dir.Cross(U);
+
+		// 단면은 부모 쪽 15% 지점에 둔다. 짧은 뼈는 두께도 같이 줄인다
+		const float Radius = std::min(Length * 0.1f, MaxRadius);
+		const FVector Base = Start + Dir * (Length * 0.15f);
+		const FVector Corners[4] = { Base + U * Radius, Base + V * Radius, Base - U * Radius, Base - V * Radius };
+
+		for (int32 i = 0; i < 4; i++)
+		{
+			LineBatcher->AddLine(Start, Corners[i], Color);
+			LineBatcher->AddLine(Corners[i], End, Color);
+			LineBatcher->AddLine(Corners[i], Corners[(i + 1) % 4], Color);
+		}
+	}
+}
+
 USkinnedMeshComponent::~USkinnedMeshComponent() = default;
 
 void USkinnedMeshComponent::PostLoad()
@@ -110,6 +164,7 @@ void USkinnedMeshComponent::UpdateBoneMatrices()
 	{
 		const FModelBone& Bone = Bones[i];
 
+		//그 본이 바인드 포즈에서 지금까지 얼마나 움직였는가
 		BoneMatrices[i] = Bone.InverseBindTransform * NodeGlobalTransforms[Bone.NodeIndex];
 	}
 
@@ -176,33 +231,30 @@ void USkinnedMeshComponent::DrawDebugSkeleton(FLineBatcher* LineBatcher, const i
 	const FMatrix ComponentWorld = GetWorldMatrix();
 	auto JointWorld = [&](const int32 NodeIndex) { return NodeGlobalTransforms[NodeIndex] * ComponentWorld; };
 
-	// 축 길이는 메시 크기에 맞춘다. 단위가 cm든 m든 비슷한 비율로 보인다
+	// 관절·뼈 두께는 메시 크기에 맞춘다. 단위가 cm든 m든 비슷한 비율로 보인다
 	const FBox Bounds = SkeletalMesh->GetMeshData().AABB;
 	const FVector Extent = Bounds.Max - Bounds.Min;
-	const float AxisLength = std::max({ Extent.X, Extent.Y, Extent.Z }) * 0.02f;
+	const float MeshSize = std::max({ Extent.X, Extent.Y, Extent.Z });
+	const float JointRadius = MeshSize * 0.006f;
+	const float BoneRadius = MeshSize * 0.02f;
 
-	const FVector4 BoneColor(1.0f, 0.85f, 0.2f, 1.0f);
-	const FVector4 SelectedColor(0.2f, 1.0f, 1.0f, 1.0f);
+	const FVector4 BoneColor(0.85f, 0.85f, 0.85f, 1.0f);
+	const FVector4 SelectedColor(1.0f, 0.85f, 0.2f, 1.0f);
 	for (int32 BoneIndex = 0; BoneIndex < Bones.Num(); BoneIndex++)
 	{
 		const int32 NodeIndex = Bones[BoneIndex].NodeIndex;
 		const FMatrix World = JointWorld(NodeIndex);
 		const FVector Joint(World.M[3][0], World.M[3][1], World.M[3][2]);
+		const FVector4& Color = BoneIndex == SelectedBone ? SelectedColor : BoneColor;
 
 		const int32 ParentNodeIndex = Nodes[NodeIndex].ParentNodeIndex;
 		if (ParentNodeIndex != -1 && NodeToBone[ParentNodeIndex] != -1)
 		{
 			const FMatrix ParentWorld = JointWorld(ParentNodeIndex);
 			const FVector ParentJoint(ParentWorld.M[3][0], ParentWorld.M[3][1], ParentWorld.M[3][2]);
-			LineBatcher->AddLine(ParentJoint, Joint, BoneIndex == SelectedBone ? SelectedColor : BoneColor);
+			DrawBoneShape(LineBatcher, ParentJoint, Joint, BoneRadius, Color);
 		}
 
-		// 행렬의 앞 세 행이 본의 X·Y·Z 축이다. 스케일이 섞여 있어도 길이를 맞추려고 정규화한다
-		const FVector AxisX = FVector(World.M[0][0], World.M[0][1], World.M[0][2]).GetSafeNormal();
-		const FVector AxisY = FVector(World.M[1][0], World.M[1][1], World.M[1][2]).GetSafeNormal();
-		const FVector AxisZ = FVector(World.M[2][0], World.M[2][1], World.M[2][2]).GetSafeNormal();
-		LineBatcher->AddLine(Joint, Joint + AxisX * AxisLength, FVector4(1.0f, 0.2f, 0.2f, 1.0f));
-		LineBatcher->AddLine(Joint, Joint + AxisY * AxisLength, FVector4(0.2f, 1.0f, 0.2f, 1.0f));
-		LineBatcher->AddLine(Joint, Joint + AxisZ * AxisLength, FVector4(0.3f, 0.5f, 1.0f, 1.0f));
+		DrawJointSphere(LineBatcher, Joint, JointRadius, Color);
 	}
 }
