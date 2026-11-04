@@ -259,7 +259,8 @@ void FSkeletalMeshPreviewTab::UpdateBoneGizmo(const bool bInputEnabled)
 		FInputSystem::IsMouseDown(EMouseButton::Left), Viewport->GetCameraLocation(), Viewport->IsOrthographic());
 
 	const FMatrix TargetWorld = GizmoRoot->GetWorldMatrix();
-	if (!BoneGizmo.IsUsing() || TargetWorld == PreviousTargetWorld)
+	//|| TargetWorld == PreviousTargetWorld
+	if (!BoneGizmo.IsUsing())
 	{
 		return;
 	}
