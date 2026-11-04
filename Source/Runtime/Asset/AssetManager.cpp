@@ -115,7 +115,11 @@ namespace
 			Mesh->Materials.Add(Material);
 		}
 
-		Mesh->MeshData.BuildTriangleBVH();
+		// 임포트 또는 캐시 로딩에서 생성한 삼각형 BVH 재사용
+		if (!Mesh->MeshData.TriangleBVH.has_value())
+		{
+			Mesh->MeshData.BuildTriangleBVH();
+		}
 		Mesh->RebuildRenderData();
 
 		return Mesh;
@@ -225,8 +229,16 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 		FString Key = PathUtils::ToUtf8(fs::relative(Files[i], AssetRoot));
 		FString Path = PathUtils::ToUtf8(Files[i]);
 		AssetPathMap.Add(Key, Path);
+
+		// 현재 처리할 파일과 시작 진행률 표시
+		if (OnProgress)
+		{
+			OnProgress(i, Total, Key);
+		}
+
 		LoadAsset(Key, Path);
 
+		// 해당 파일의 처리 완료 진행률 표시
 		if (OnProgress)
 		{
 			OnProgress(i + 1, Total, Key);
@@ -533,7 +545,7 @@ UStaticMesh* UAssetManager::LoadObjStaticMesh(const FString& Path)
 	return Mesh;
 }
 
-void UAssetManager::LoadFbxModel(const FString& Path)
+void UAssetManager::LoadFbxModel(const FString& Path, const TArray<std::filesystem::path>& AdditionalTextureDirectories)
 {
 	const FString MeshKey = MakeAssetKey(Path);
 	if (USkeletalMesh* Cached = GetAssetByPath<USkeletalMesh>(MeshKey))
@@ -542,7 +554,7 @@ void UAssetManager::LoadFbxModel(const FString& Path)
 	}
 
 	FModelData ModelData;
-	if (!FFbxImporter::LoadFromFile(Path, ModelData))
+	if (!FFbxImporter::LoadFromFile(Path, ModelData, AdditionalTextureDirectories))
 	{
 		return;
 	}

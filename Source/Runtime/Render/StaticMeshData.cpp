@@ -85,6 +85,30 @@ void FModelMeshData::OptimizeTriangleOrderForVertexCache()
 {
 	constexpr uint32 CacheSize = 32;
 	const uint32 VertexCount = static_cast<uint32>(Vertices.Num());
+	// 공유 정점이 없는 메시의 불필요한 캐시 최적화 제외
+	{
+		std::vector<uint8> ReferencedVertices(VertexCount, 0);
+		bool bHasSharedVertex = false;
+
+		for (uint32 VertexIndex : Indices)
+		{
+			if (VertexIndex >= VertexCount)
+			{
+				return;
+			}
+			if (ReferencedVertices[VertexIndex] != 0)
+			{
+				bHasSharedVertex = true;
+				break;
+			}
+			ReferencedVertices[VertexIndex] = 1;
+		}
+
+		if (!bHasSharedVertex)
+		{
+			return;
+		}
+	}
 	for (const FMeshSection& Section : Sections)
 	{
 		if (Section.IndexCount < 6 || Section.StartIndex % 3 != 0 ||

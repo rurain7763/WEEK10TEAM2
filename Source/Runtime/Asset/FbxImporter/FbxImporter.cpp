@@ -1,10 +1,11 @@
 #include "EnginePCH.h"
 #include "Asset/FbxImporter/FbxImporter.h"
-
+#include "Asset/FbxImporter/FbxTextureResolver.h"
 #include "Asset/ModelBake.h"
 #include "Core/PathUtils.h"
 #include <algorithm>
 #include <stdexcept>
+#include <cwctype>
 
 namespace
 {
@@ -35,17 +36,24 @@ namespace
 	}
 }
 
-bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
+bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData, const TArray<std::filesystem::path>& AdditionalTextureDirectories) 
 {
 	const FString BinPath = Path + ".bin";
+	const std::filesystem::path FbxPath = std::filesystem::absolute(PathUtils::FromUtf8(Path)).lexically_normal();
+	FFbxTextureResolver TextureResolver(FbxPath, AdditionalTextureDirectories);
 
 	// .bin 파일 읽기
+	OutModelData = FModelData{};
 	if (FModelBake::ReadBaked(BinPath, OutModelData))
 	{
-		return true;
+		if (TextureResolver.AreCachedTexturesAvailable(OutModelData))
+		{
+			return true;
+		}
 	}
 
-	std::filesystem::path FbxPath = PathUtils::FromUtf8(Path);
+	// 캐시 읽기 실패 및 추출 파일 누락 이후의 빈 파싱 결과
+	OutModelData = FModelData{};
 
 	// FBX sdk 준비
 	fbxsdk::FbxManager* MG = fbxsdk::FbxManager::Create();
@@ -55,18 +63,27 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 	}
 
 	fbxsdk::FbxIOSettings* IOSettings = fbxsdk::FbxIOSettings::Create(MG, IOSROOT);
+
+	// 머티리얼·텍스처 및 내장 미디어 추출 활성화
+	IOSettings->SetBoolProp(IMP_FBX_MATERIAL, true);
+	IOSettings->SetBoolProp(IMP_FBX_TEXTURE, true);
+	IOSettings->SetBoolProp(IMP_FBX_EXTRACT_EMBEDDED_DATA, true);
 	MG->SetIOSettings(IOSettings);
 
 	fbxsdk::FbxGeometryConverter* Converter = new fbxsdk::FbxGeometryConverter(MG);
 
 	fbxsdk::FbxImporter* Importer = fbxsdk::FbxImporter::Create(MG, "");
-	bool bResult = Importer->Initialize(Path.c_str());
+	bool bResult = Importer->Initialize(Path.c_str(), -1, IOSettings);
 	if (!bResult)
 	{
 		HTR_LOG(Warning, "[Fbx] : {}", Importer->GetStatus().GetErrorString());
 		MG->Destroy();
 		return false;
 	}
+
+	// 모델별 내장 미디어 추출 위치 지정
+	const FString ExtractionPath = PathUtils::ToUtf8(TextureResolver.GetExtractionDirectory());
+	Importer->SetEmbeddingExtractionFolder(ExtractionPath.c_str());
 
 	fbxsdk::FbxScene* Scene = fbxsdk::FbxScene::Create(MG, "");
 
@@ -77,6 +94,9 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 		MG->Destroy();
 		return false;
 	}
+
+	// SDK 임포트 이후 확정된 실제 추출 폴더 반영
+	TextureResolver.SetExtractionDirectory(Importer->GetEmbeddingExtractionFolder());
 
 	bResult = Converter->Triangulate(Scene, true);
 	if (!bResult)
@@ -113,7 +133,9 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 
 	for (FMeshNode& MeshNode : MeshNodes)
 	{
-		ProcessMeshNode(FbxPath, NodeToIndexMap, NodeIndexToBoneIndexMap, OutModelData.Bones, MeshNode, OutModelData.MeshData, OutModelData.VertexInfluencesList, OutModelData.Meshs);
+		// 동일 모델의 모든 메시가 공유하는 텍스처 탐색
+		ProcessMeshNode(TextureResolver, NodeToIndexMap, NodeIndexToBoneIndexMap,OutModelData.Bones, MeshNode, 
+			OutModelData.MeshData, OutModelData.VertexInfluencesList, OutModelData.Meshs);
 	}
 
 	OutModelData.IsSkeletal = OutModelData.Bones.Num();
@@ -163,8 +185,10 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 	OutModelData.MeshData.BuildAABB();
 	OutModelData.MeshData.BuildTriangleBVH();
 
-	FModelBake::WriteBaked(BinPath, OutModelData);
-
+	if (!TextureResolver.HasUnresolvedTextures())
+	{
+		FModelBake::WriteBaked(BinPath, OutModelData);
+	}
 	// 리소스 정리
 	delete Converter;
 	MG->Destroy();
@@ -223,7 +247,9 @@ void FFbxImporter::BuildNodeHierarchy(int32 ParentNodeIndex, fbxsdk::FbxNode* Cu
 	}
 }
 
-void FFbxImporter::ProcessMeshNode(const std::filesystem::path& FbxPath, const TMap<uint64, int32>& NodeToIndexMap, const TMap<int32, int32>& NodeIndexToBoneIndexMap, TArray<FModelBone>& Bones, const FMeshNode& MeshNode, FModelMeshData& OutModelMeshData, TArray<FModelVertexInfluences>& OutVertexInfluencesList, TArray<FModelMesh>& OutMeshs)
+void FFbxImporter::ProcessMeshNode(const FFbxTextureResolver& TextureResolver, const TMap<uint64, int32>& NodeToIndexMap,
+	const TMap<int32, int32>& NodeIndexToBoneIndexMap, TArray<FModelBone>& Bones, const FMeshNode& MeshNode, 
+	FModelMeshData& OutModelMeshData, TArray<FModelVertexInfluences>& OutVertexInfluencesList, TArray<FModelMesh>& OutMeshs) 
 {
 	bool IsSkeletal = Bones.Num();
 
@@ -233,7 +259,7 @@ void FFbxImporter::ProcessMeshNode(const std::filesystem::path& FbxPath, const T
 	TArray<int32> VertexToControlPoint;
 	TArray<FMeshMaterialSlot> Materials;
 	TArray<FTriangleFace> Faces;
-	ParseMesh(FbxPath, Mesh, Vertices, VertexToControlPoint, Materials, Faces);
+	ParseMesh(TextureResolver, Mesh, Vertices, VertexToControlPoint, Materials, Faces);
 
 	std::sort(Faces.begin(), Faces.end(), [](const FTriangleFace& A, const FTriangleFace& B) { return A.MaterialSlotIndex < B.MaterialSlotIndex; });
 
@@ -316,61 +342,51 @@ void FFbxImporter::ProcessMeshNode(const std::filesystem::path& FbxPath, const T
 	}
 }
 
-void FFbxImporter::ParseMaterial(const std::filesystem::path& ParentPath, fbxsdk::FbxSurfaceMaterial* Material, FMeshMaterialSlot& OutMaterial)
+void FFbxImporter::ParseMaterial(const FFbxTextureResolver& TextureResolver, fbxsdk::FbxSurfaceMaterial* Material, 
+	FMeshMaterialSlot& OutMaterial) 
 {
-	fbxsdk::FbxProperty DiffuseProperty = Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sDiffuse);
+	// 원본 머티리얼 슬롯 이름 보존
+	OutMaterial.Name = Material->GetName();
+
+	fbxsdk::FbxProperty DiffuseProperty =
+		Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sDiffuse);
 	if (DiffuseProperty.IsValid())
 	{
 		fbxsdk::FbxDouble3 FbxColor3 = DiffuseProperty.Get<FbxDouble3>();
 		OutMaterial.BaseColor = FLinearColor(FbxColor3[0], FbxColor3[1], FbxColor3[2]);
 
-		for (int32 i = 0; i < DiffuseProperty.GetSrcObjectCount<FbxFileTexture>(); i++)
-		{
-			fbxsdk::FbxFileTexture* Texture = DiffuseProperty.GetSrcObject<fbxsdk::FbxFileTexture>(i);
-			if (Texture->GetRelativeFileName())
-			{
-				OutMaterial.DiffuseTexturePath = PathUtils::ToUtf8(ParentPath / PathUtils::FromUtf8(Texture->GetRelativeFileName()));
-			}
-			else if (Texture->GetFileName())
-			{
-				OutMaterial.DiffuseTexturePath = PathUtils::ToUtf8(ParentPath / PathUtils::FromUtf8(Texture->GetFileName()));
-			}
-		}
+		// Diffuse 연결의 우선순위 기반 파일 경로 해석
+		OutMaterial.DiffuseTexturePath = TextureResolver.ResolveProperty(DiffuseProperty);
 	}
 
-	fbxsdk::FbxProperty SpecularProperty = Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sSpecular);
+	fbxsdk::FbxProperty SpecularProperty =
+		Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sSpecular);
 	if (SpecularProperty.IsValid())
 	{
 		fbxsdk::FbxDouble3 FbxColor3 = SpecularProperty.Get<FbxDouble3>();
 		OutMaterial.SpecularColor = FLinearColor(FbxColor3[0], FbxColor3[1], FbxColor3[2]);
 	}
 
-	fbxsdk::FbxProperty ShininessProperty = Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sShininess);
+	fbxsdk::FbxProperty ShininessProperty =
+		Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sShininess);
 	if (ShininessProperty.IsValid())
 	{
 		fbxsdk::FbxDouble FbxDouble1 = ShininessProperty.Get<FbxDouble>();
 		OutMaterial.Shininess = FbxDouble1;
 	}
 
-	fbxsdk::FbxProperty NormalProperty = Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sNormalMap);
-	if (DiffuseProperty.IsValid())
+	fbxsdk::FbxProperty NormalProperty =
+		Material->FindProperty(fbxsdk::FbxSurfaceMaterial::sNormalMap);
+	if (NormalProperty.IsValid())
 	{
-		for (int32 i = 0; i < NormalProperty.GetSrcObjectCount<FbxFileTexture>(); i++)
-		{
-			fbxsdk::FbxFileTexture* Texture = NormalProperty.GetSrcObject<fbxsdk::FbxFileTexture>(i);
-			if (Texture->GetRelativeFileName())
-			{
-				OutMaterial.NormalTexturePath = PathUtils::ToUtf8(ParentPath / PathUtils::FromUtf8(Texture->GetRelativeFileName()));
-			}
-			else if (Texture->GetFileName())
-			{
-				OutMaterial.NormalTexturePath = PathUtils::ToUtf8(ParentPath / PathUtils::FromUtf8(Texture->GetFileName()));
-			}
-		}
+		// NormalMap 연결의 공통 파일 경로 해석
+		OutMaterial.NormalTexturePath = TextureResolver.ResolveProperty(NormalProperty);
 	}
 }
 
-void FFbxImporter::ParseMesh(const std::filesystem::path& FbxPath, fbxsdk::FbxMesh* Mesh, TArray<FVertexPNCT>& OutVertices, TArray<int32>& OutVertexToControlPoints, TArray<FMeshMaterialSlot>& OutMaterials, TArray<FTriangleFace>& OutFaces)
+void FFbxImporter::ParseMesh(const FFbxTextureResolver& TextureResolver, fbxsdk::FbxMesh* Mesh, 
+	TArray<FVertexPNCT>& OutVertices, TArray<int32>& OutVertexToControlPoints, TArray<FMeshMaterialSlot>& OutMaterials,
+	TArray<FTriangleFace>& OutFaces) 
 {
 	fbxsdk::FbxNode* Node = Mesh->GetNode();
 
@@ -546,7 +562,7 @@ void FFbxImporter::ParseMesh(const std::filesystem::path& FbxPath, fbxsdk::FbxMe
 					MaterialSlotIndex = OutMaterials.Num();
 
 					FMeshMaterialSlot& MaterialSlot = OutMaterials.AddDefaulted_GetRef();
-					ParseMaterial(FbxPath.parent_path(), SurfaceMaterial, MaterialSlot);
+					ParseMaterial(TextureResolver, SurfaceMaterial, MaterialSlot);
 
 					MaterialIDToIndexMap[SurfaceMaterialID] = MaterialSlotIndex;
 				}
@@ -559,7 +575,7 @@ void FFbxImporter::ParseMesh(const std::filesystem::path& FbxPath, fbxsdk::FbxMe
 
 void FFbxImporter::CompactSoftSkin(FSoftModelVertexInfluences& Skin)
 {
-	if (Skin.BoneIndices.Num() < MaxBoneInfluenceCount)
+	if (Skin.BoneIndices.Num() <= 0)
 	{
 		return;
 	}

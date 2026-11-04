@@ -67,7 +67,7 @@ public:
 	UTexture2D* LoadTexture(const FString& InPath, bool bGenerateMips = true, bool bSRGB = true);
 	UFont* LoadFontAtlas(const FString& JsonPath, const FString& AtlasTexturePath);
 	static UStaticMesh* LoadObjStaticMesh(const FString& Path);
-	void LoadFbxModel(const FString& Path);
+	void LoadFbxModel(const FString& Path, const TArray<std::filesystem::path>& AdditionalTextureDirectories = {});
 	static ULevelSequence* LoadLevelSequence(const FString& Path);
 
 	FLODGenerateResult GenerateStaticMeshLODs(UStaticMesh& Mesh,const FLODGenerateRequest& Request);
