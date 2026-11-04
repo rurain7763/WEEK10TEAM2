@@ -13,7 +13,7 @@
 #include <algorithm>
 
 // 현재 World의 가시 컴포넌트에서 경계만 캡처한다. Mesh·삼각형은 복사하지 않는다.
-void FViewportRenderCollector::CaptureWorld(UWorld& World)
+void FViewportRenderCollector::CaptureWorld(UWorld& World, bool bDrawSkeletalMeshes)
 {
     RenderObjects.Reset();
     for (auto& Entry : PrimitiveById) Entry.second.bCaptured = false;
@@ -25,6 +25,7 @@ void FViewportRenderCollector::CaptureWorld(UWorld& World)
     for (int32 i = 0; i < Count;++i)
     {
         if (!Scene.PrimitiveFlags[i]) continue;
+        if (!bDrawSkeletalMeshes && Scene.Proxies[i]->IsUsingSkinning()) continue;
         UPrimitiveComponent* Primitive = Scene.Proxies[i]->GetComponent();
         if (!Primitive || !Primitive->IsVisible() || !Primitive->GetOwner() ||
             Primitive->GetOwner()->GetWorld() != &World) continue;

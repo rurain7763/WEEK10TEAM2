@@ -130,7 +130,8 @@ public:
 		FLightSceneProxy* PreviewShadowMapProxy,
 		FShadowStats& ShadowStats,
 		bool bVisualizeCascades = false,
-		bool bCacheHit = false);
+		bool bCacheHit = false,
+		bool bDrawSkeletalMeshes = true);
 
 	void BindShadowForShading();
 	void BindSceneLighting();

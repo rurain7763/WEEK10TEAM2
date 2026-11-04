@@ -136,6 +136,11 @@ const TArray<FMatrix>& USkinnedMeshComponent::GetBoneMatrices() const
 	return BoneMatrices;
 }
 
+const TArray<FMatrix>& USkinnedMeshComponent::GetLocalPose() const
+{
+	return LocalPose;
+}
+
 USkeletalMesh* USkinnedMeshComponent::GetSkeletalMesh()
 {
 	return SkeletalMesh;

@@ -3,6 +3,8 @@
 #include "Editor/EditorUI/EditorPanel.h"
 #include "Editor/Viewports/Viewport.h"
 
+#include <functional>
+
 class FEditorViewportClient;
 class UWorld;
 
@@ -10,7 +12,7 @@ class FPreviewViewportPanel : public IEditorPanel
 {
 public:
 	// InPanelName은 ImGui 창 이름이라 탭마다 달라야 한다. "Viewport##탭이름"처럼 넘긴다
-	FPreviewViewportPanel(UWorld* InWorld, FString InPanelName);
+	FPreviewViewportPanel(UWorld* InWorld, FString InPanelName, std::function<void()> InDrawToolbar);
 	~FPreviewViewportPanel() = default;
 
 	FPreviewViewportPanel(const FPreviewViewportPanel&) = delete;
@@ -37,6 +39,7 @@ public:
 private:
 	UWorld* World = nullptr; // 탭 소유
 	FString PanelName;
+	std::function<void()> DrawToolbar;
 
 	TUniquePtr<FViewport> Viewport;
 	FEditorViewportClient* EditorClient = nullptr; // Viewport 소유

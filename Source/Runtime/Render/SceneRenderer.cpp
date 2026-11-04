@@ -80,7 +80,8 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 		&& ShadowAtlasInfos.Num() == ShadowInfos.Num()
 		&& (ShadowInfos.IsEmpty() || std::memcmp(ShadowAtlasInfos.GetData(), ShadowInfos.GetData(), sizeof(FShadowInfo) * ShadowInfos.Num()) == 0);
 	const bool bSceneShadowUnchanged = !World.GetScene().IsShadowDirty() || bShadowAtlasRenderedThisFrame;
-	const bool bCacheHit = FScene::bCacheWholeSceneShadows && bSameShadowSet && bSceneShadowUnchanged;
+	const bool bCacheHit = FScene::bCacheWholeSceneShadows && bSameShadowSet && bSceneShadowUnchanged
+		&& bShadowAtlasDrawSkeletalMeshes == Settings.bDrawSkeletalMeshes;
 
 	Renderer->SetLighting(Lighting, PointLights, SpotLights);
 	Renderer->SetShadowFilterSettings(Settings.ShadowFilter);
@@ -96,6 +97,7 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 			ShadowAtlasWorld = &World;
 			ShadowAtlasInfos = ShadowInfos;
 			bShadowAtlasRenderedThisFrame = true;
+			bShadowAtlasDrawSkeletalMeshes = Settings.bDrawSkeletalMeshes;
 		}
 
 		Renderer->RenderShadowPass(
@@ -110,7 +112,8 @@ void FSceneRenderer::Render(UWorld& World, const FSceneView& SceneView, const FS
 			PreviewShadowMapLightProxy,
 			ShadowStats,
 			Settings.bVisualizeCascades,
-			bCacheHit
+			bCacheHit,
+			Settings.bDrawSkeletalMeshes
 		);
 	}
 
