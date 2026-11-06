@@ -105,6 +105,8 @@ bool FFbxImporter::LoadFromFile(const FString& Path, FModelData& OutModelData)
 		EngineImportAxis.ConvertScene(Scene);
 	}
 
+	fbxsdk::FbxSystemUnit::m.ConvertScene(Scene);
+
 	// 파싱
 	TMap<uint64, int32> NodeToIndexMap;
 	TMap<int32, int32> NodeIndexToBoneIndexMap;
